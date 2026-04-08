@@ -90,6 +90,19 @@ export default function HostPage() {
         setPlayers([]);
         setError(result.error);
       }
+    } catch (e) {
+      const msg =
+        e instanceof Error && e.message
+          ? e.message
+          : "Nu s-a putut lansa sesiunea (eroare necunoscută).";
+      setPin(null);
+      setSessionId(null);
+      setPlayers([]);
+      setError(
+        msg.includes("SUPABASE_SERVICE_ROLE_KEY")
+          ? "Lipsește SUPABASE_SERVICE_ROLE_KEY în Environment Variables pe Vercel (server-only)."
+          : msg,
+      );
     } finally {
       setLoading(false);
     }
@@ -129,6 +142,16 @@ export default function HostPage() {
       } else {
         setStartError(result.error);
       }
+    } catch (e) {
+      const msg =
+        e instanceof Error && e.message
+          ? e.message
+          : "Nu s-a putut porni jocul (eroare necunoscută).";
+      setStartError(
+        msg.includes("SUPABASE_SERVICE_ROLE_KEY")
+          ? "Lipsește SUPABASE_SERVICE_ROLE_KEY în Environment Variables pe Vercel (server-only)."
+          : msg,
+      );
     } finally {
       setStartLoading(false);
     }
