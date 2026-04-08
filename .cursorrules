@@ -1,0 +1,33 @@
+# Project Profile: Kahoot-Clone (Bible Quiz Edition)
+
+## Tech Stack
+- Framework: Next.js 15 (App Router)
+- Language: TypeScript (Strict mode)
+- Database & Auth: Supabase
+- Realtime: Supabase Realtime (WebSockets)
+- Styling: Tailwind CSS (Mobile-first)
+- Icons: Lucide React
+
+## Architecture Rules
+- Use Server Components by default. Only use 'use client' for interactive elements (buttons, forms, realtime listeners).
+- Use Server Actions (src/app/actions) for all database mutations (Join game, Start game, Submit answer).
+- Keep game logic separated: Business logic in `src/lib/game-logic.ts`.
+- Database schema is defined in `src/db/schema.sql`. Refer to it before suggesting queries.
+
+## Coding Standards
+- TypeScript: Always define Interfaces for Quiz, Question, and Player objects.
+- Error Handling: Wrap Server Actions in try-catch and return a standard `{ success: boolean, error?: string }` object.
+- UI/UX: 
+    - The Player interface (`/join`, `/game/player`) MUST be mobile-first and optimized for touch.
+    - Use Tailwind for animations (transitions, transforms).
+    - Maintain the 4-button color scheme (Red/Triangle, Blue/Diamond, Yellow/Circle, Green/Square) for the player's controller.
+
+## Supabase Specifics
+- Always use the helper in `src/lib/supabase.ts` to initialize the client.
+- Realtime subscriptions must be cleaned up in `useEffect` return functions to avoid memory leaks.
+- When querying, use the camelCase to snake_case mapping correctly for the DB columns (e.g., `currentQuestionIndex` vs `current_question_index`).
+
+## Project-Specific Logic (Kahoot Clone)
+- PINs are 6-digit unique strings.
+- Scores are calculated based on: (Base points + Time Bonus).
+- Realtime sync is priority: Host screen must update instantly when a player joins or answers.

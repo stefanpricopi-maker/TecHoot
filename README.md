@@ -20,6 +20,27 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Supabase: schema + import întrebări
+
+### Rulare schema / migrări
+
+- **Schema**: `src/db/schema.sql`
+- **Migrări**: `src/db/migrations/*.sql`
+
+Rulează SQL-ul în **Supabase → SQL Editor**.
+
+### Import din Excel (recomandat: CSV)
+
+1. Pornește de la template-ul `templates/questions_import_template.csv`.
+2. În Excel/Sheets: completează rândurile, apoi exportă ca **CSV** (UTF-8).
+3. Generează SQL de import:
+
+```bash
+python3 scripts/import_questions_from_csv.py path/to/questions.csv > src/db/migrations/008_import_from_csv.sql
+```
+
+4. Rulează `008_import_from_csv.sql` în Supabase SQL Editor.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
