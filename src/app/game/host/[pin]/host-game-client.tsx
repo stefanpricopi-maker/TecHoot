@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   proceedAfterResults,
   getHostCorrectOptionIndex,
+  quitGameSession,
   showRoundResults,
   startCurrentQuestionTimer,
 } from "@/app/actions/game-actions";
@@ -47,6 +48,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
 
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [quitBusy, setQuitBusy] = useState(false);
   const [questions, setQuestions] = useState<PublicQuizQuestionData[] | null>(null);
   const [correctIdx, setCorrectIdx] = useState<number | null>(null);
 
@@ -125,7 +127,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
     timeLeft,
   });
 
-  const refreshTop5 = useCallback(
+  const refreshTop10 = useCallback(
     async (sid: string) => {
       const supabase = createSupabaseClient();
       const { data } = await supabase
@@ -133,7 +135,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
         .select("id, display_name, score")
         .eq("session_id", sid)
         .order("score", { ascending: false })
-        .limit(5);
+        .limit(10);
       const rows = (data ?? []) as unknown as LeaderTopRow[];
       setLeaderTop(
         rows.map((p) => ({
@@ -148,18 +150,38 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
 
   const prevQuestionIdxRef = useRef<number | null>(null);
   useEffect(() => {
-    if (status === "question_active") {
-      if (prevQuestionIdxRef.current !== questionIndex) {
-        prevQuestionIdxRef.current = questionIndex;
-        if (sessionId) {
-          void refreshTop5(sessionId);
-        }
-        setShowIntermission(true);
-        const id = window.setTimeout(() => setShowIntermission(false), 10_000);
-        return () => window.clearTimeout(id);
-      }
+    if (status !== "question_active") {
+      return;
     }
-  }, [status, questionIndex, sessionId, refreshTop5]);
+    // Rundă deja „live” în DB (refresh, Realtime) — fără încă o intermisie de 10s.
+    if (questionStartedAt != null) {
+      prevQuestionIdxRef.current = questionIndex;
+      setShowIntermission((show) => (show ? false : show));
+      return;
+    }
+    if (prevQuestionIdxRef.current !== questionIndex) {
+      prevQuestionIdxRef.current = questionIndex;
+      if (sessionId) {
+        void refreshTop10(sessionId);
+      }
+      setShowIntermission(true);
+      const id = window.setTimeout(() => {
+        setShowIntermission(false);
+        void (async () => {
+          const sid = sessionIdRef.current;
+          if (!sid) return;
+          setActionErr(null);
+          const res = await startCurrentQuestionTimer(sid);
+          if (res.ok) {
+            setQuestionStartedAt(res.startedAt);
+          } else {
+            setActionErr(res.error);
+          }
+        })();
+      }, 7_000);
+      return () => window.clearTimeout(id);
+    }
+  }, [status, questionIndex, sessionId, questionStartedAt, refreshTop10]);
 
   const refreshResponseCount = useCallback(
     async (sid: string, qIdx: number) => {
@@ -236,9 +258,9 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
     if (sess.status === "question_active") {
       await refreshResponseCount(sid, sess.current_question_index as number);
       await refreshLiveVotes(sid, sess.current_question_index as number);
-      await refreshTop5(sid);
+      await refreshTop10(sid);
     }
-  }, [normalizedPin, refreshResponseCount, refreshLiveVotes, refreshTop5]);
+  }, [normalizedPin, refreshResponseCount, refreshLiveVotes, refreshTop10]);
 
   useEffect(() => {
     void hydrateSession();
@@ -335,7 +357,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
           .select("id, display_name, score")
           .eq("session_id", sessionId)
           .order("score", { ascending: false })
-          .limit(5),
+          .limit(10),
       ]);
 
       const rows = respRes.data ?? [];
@@ -401,7 +423,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
             );
             setLiveVotes([0, 0, 0, 0]);
             void refreshLiveVotes(sessionId, row.current_question_index);
-            void refreshTop5(sessionId);
+            void refreshTop10(sessionId);
           }
           if (row.status === "finished") {
             stopTimer();
@@ -437,7 +459,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
           filter: `session_id=eq.${sessionId}`,
         },
         () => {
-          void refreshTop5(sessionId);
+          void refreshTop10(sessionId);
         },
       )
       .subscribe();
@@ -541,32 +563,67 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
         setShowIntermission(true);
         window.setTimeout(() => {
           setShowIntermission(false);
-          void startCurrentQuestionTimer(sessionId);
-        }, 10_000);
+          void (async () => {
+            setActionErr(null);
+            const res = await startCurrentQuestionTimer(sessionId);
+            if (res.ok) {
+              setQuestionStartedAt(res.startedAt);
+            } else {
+              setActionErr(res.error);
+            }
+          })();
+        }, 7_000);
       }
     } finally {
       setBusy(false);
     }
   }, [sessionId, status]);
 
+  const handleQuitGame = useCallback(async () => {
+    if (!sessionId) return;
+    if (
+      !window.confirm(
+        "Închizi jocul pentru toți participanții? Ei vor vedea clasamentul curent.",
+      )
+    ) {
+      return;
+    }
+    setQuitBusy(true);
+    setActionErr(null);
+    try {
+      const res = await quitGameSession(sessionId);
+      if (!res.ok) {
+        setActionErr(res.error);
+        return;
+      }
+      stopTimer();
+      router.push("/host");
+    } finally {
+      setQuitBusy(false);
+    }
+  }, [sessionId, router, stopTimer]);
+
   if (!sessionId && status === "lobby") {
     return (
-      <div className="flex min-h-dvh items-center justify-center px-4">
-        <p className="text-[var(--foreground)]/70">Se încarcă sesiunea…</p>
+      <div className="flex min-h-dvh items-center justify-center px-6 text-gray-400">
+        <p>Se încarcă sesiunea…</p>
       </div>
     );
   }
 
   if (status === "lobby") {
     return (
-      <div className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center gap-4 px-4 text-center">
-        <p className="text-[var(--foreground)]/80">
+      <div className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center gap-6 px-6 text-center text-gray-100">
+        <p className="text-lg text-gray-400">
           Jocul n-a pornit încă. Dă-i start din pagina de Admin.
         </p>
-        <p className="text-2xl font-bold tabular-nums tracking-widest">
+        <p className="text-3xl font-extrabold tabular-nums tracking-widest text-[#f59e0b]">
           {normalizedPin}
         </p>
-        <Link href="/host" className="underline">
+        <Link
+          href="/host"
+          className="font-semibold text-[#f59e0b] underline-offset-4 hover:underline"
+        >
           La Admin
         </Link>
       </div>
@@ -575,15 +632,20 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
 
   if (status === "finished") {
     return (
-      <div className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center gap-6 px-4 text-center">
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">Joc terminat</h1>
+      <div className="mx-auto flex min-h-dvh max-w-lg flex-col items-center justify-center gap-8 px-6 text-center text-gray-100">
+        <h1 className="text-3xl font-extrabold tracking-tight text-[#f59e0b]">
+          Joc terminat
+        </h1>
         <Link
           href={`/game/results/${encodeURIComponent(normalizedPin)}`}
-          className="rounded-xl bg-[var(--foreground)] px-6 py-3 font-semibold text-[var(--background)]"
+          className="min-h-12 rounded-2xl bg-[#f59e0b] px-8 py-3 font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
           Vezi clasamentul
         </Link>
-        <Link href="/host" className="font-medium underline opacity-80">
+        <Link
+          href="/host"
+          className="font-semibold text-gray-400 underline-offset-4 hover:text-[#f59e0b] hover:underline"
+        >
           Înapoi la Admin
         </Link>
       </div>
@@ -592,8 +654,8 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
 
   if (status === "showing_results" && question == null) {
     return (
-      <div className="flex min-h-dvh items-center justify-center px-4">
-        <p className="text-[var(--foreground)]/70">Date indisponibile.</p>
+      <div className="flex min-h-dvh items-center justify-center px-6 text-gray-400">
+        <p>Date indisponibile.</p>
       </div>
     );
   }
@@ -604,23 +666,33 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
     const maxScore = Math.max(1, ...leaderTop.map((p) => p.score));
 
     return (
-      <div className="mx-auto min-h-dvh max-w-2xl px-4 py-6 pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <header className="mb-6 text-center">
-          <p className="text-sm font-medium uppercase tracking-wider text-[var(--foreground)]/55">
+      <div className="mx-auto min-h-dvh w-full max-w-3xl px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] text-gray-100">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={handleQuitGame}
+            disabled={quitBusy || !sessionId}
+            className="rounded-2xl border border-red-500/45 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-200 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-45"
+          >
+            {quitBusy ? "…" : "Termină jocul!"}
+          </button>
+        </div>
+        <header className="mb-8 text-left">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
             Rezultate rundă
           </p>
-          <p className="mt-1 text-xs text-[var(--foreground)]/50">
+          <p className="mt-2 text-xs text-gray-400">
             Întrebarea {questionIndex + 1} din {quizLen}
             {isLastRound ? " · ultima întrebare" : ""}
           </p>
           <AnimatePresence mode="wait">
             <motion.h1
               key={`sr-q-${questionIndex}-${question.id}`}
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2 }}
-              className="mt-3 text-xl font-semibold leading-snug text-[var(--foreground)] sm:text-2xl"
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+              className="mt-4 text-xl font-extrabold leading-snug tracking-tight text-gray-100 sm:text-2xl"
             >
               {question.text}
             </motion.h1>
@@ -628,60 +700,83 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
         </header>
 
         {typeof idx === "number" && idx >= 0 && idx < question.options.length ? (
-          <section className="mb-8 rounded-2xl border-2 border-emerald-600/50 bg-emerald-500/10 p-4 sm:p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
+          <section className="mb-8 w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] sm:p-8">
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-300/90">
               Răspuns corect
             </p>
-            <p className="mt-2 text-lg font-bold text-[var(--foreground)]">
+            <p className="mt-3 text-lg font-extrabold text-gray-100">
               {idx + 1}. {question.options[idx]}
             </p>
           </section>
         ) : (
-          <p className="mb-8 text-center text-sm text-[var(--foreground)]/55">
+          <p className="mb-8 text-center text-sm text-gray-400">
             Se încarcă răspunsul corect…
           </p>
         )}
 
-        <section className="mb-8 rounded-2xl border border-[var(--foreground)]/12 bg-[var(--background)] p-4 sm:p-5">
-          <div className="mb-4 flex items-baseline justify-between gap-3">
-            <p className="text-sm font-semibold text-[var(--foreground)]">
-              Leaderboard (Top 5)
+        <div className="mb-8 flex w-full flex-col items-center gap-3">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={handleProceed}
+            className="min-h-14 w-full max-w-sm rounded-2xl bg-[#f59e0b] px-8 font-extrabold uppercase tracking-wide text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 sm:w-auto"
+          >
+            {busy
+              ? "…"
+              : isLastRound
+                ? "Încheie jocul"
+                : "Următoarea întrebare"}
+          </button>
+          {isLastRound && (
+            <p className="max-w-sm text-center text-xs text-gray-400">
+              După apăsare, sesiunea se închide și participanții văd
+              ecranul final.
             </p>
-            <p className="text-xs text-[var(--foreground)]/55">intermediar</p>
+          )}
+        </div>
+
+        <section className="mb-8 w-full rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
+          <div className="mb-6 flex items-baseline justify-between gap-3">
+            <p className="text-sm font-extrabold text-gray-100">
+              Clasament (Top 10)
+            </p>
+            <p className="pr-1 text-xs font-semibold uppercase tracking-wider text-[#f59e0b]">
+              intermediar
+            </p>
           </div>
 
           {leaderTop.length === 0 ? (
-            <p className="text-sm text-[var(--foreground)]/55">
+            <p className="text-sm text-gray-400">
               Se încarcă clasamentul…
             </p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-4">
               {leaderTop.map((p, i) => (
                 <li
                   key={p.id}
-                  className="rounded-xl bg-[var(--foreground)]/5 p-3"
+                  className="rounded-2xl border border-gray-700/40 bg-[#0a0f1e] p-4"
                 >
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-3">
-                      <span className="w-7 tabular-nums text-[var(--foreground)]/45">
-                        {i + 1}.
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="flex w-8 shrink-0 items-center justify-center tabular-nums text-sm font-bold text-gray-400">
+                        {i === 0 ? <span aria-hidden>👑</span> : `${i + 1}.`}
                       </span>
-                      <span className="truncate font-medium text-[var(--foreground)]">
+                      <span className="truncate font-semibold text-gray-100">
                         {p.display_name}
                       </span>
                     </span>
-                    <span className="font-mono text-sm font-bold tabular-nums text-amber-300">
+                    <span className="font-mono text-sm font-extrabold tabular-nums text-[#f59e0b]">
                       {p.score}
                     </span>
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--foreground)]/10">
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#1a2236]">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{
                         width: `${Math.max(6, Math.round((p.score / maxScore) * 100))}%`,
                       }}
                       transition={{ type: "spring", stiffness: 260, damping: 28 }}
-                      className="h-full rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-emerald-300"
+                      className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
                     />
                   </div>
                 </li>
@@ -691,18 +786,18 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
         </section>
 
         {roundBreakdown != null && (
-          <div className="mb-8 space-y-3 rounded-2xl border border-[var(--foreground)]/12 bg-[var(--background)] p-4 sm:p-5">
-            <p className="text-center text-sm font-medium text-[var(--foreground)]">
-              <span className="tabular-nums">{roundBreakdown.answered}</span> din{" "}
+          <div className="mb-8 w-full space-y-4 rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
+            <p className="text-center text-sm font-medium text-gray-100">
+              <span className="tabular-nums font-extrabold text-[#f59e0b]">{roundBreakdown.answered}</span> din{" "}
               <span className="tabular-nums">{roundBreakdown.playersTotal}</span>{" "}
               participanți au răspuns
             </p>
-            <p className="text-center text-sm text-[var(--foreground)]/75">
-              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+            <p className="text-center text-sm text-gray-400">
+              <span className="font-semibold text-emerald-400">
                 {roundBreakdown.correct}
               </span>{" "}
               corecte ·{" "}
-              <span className="font-semibold text-red-600 dark:text-red-400">
+              <span className="font-semibold text-red-400">
                 {roundBreakdown.answered - roundBreakdown.correct}
               </span>{" "}
               greșite
@@ -710,28 +805,28 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
                 <>
                   {" "}
                   ·{" "}
-                  <span className="font-semibold text-[var(--foreground)]/80">
+                  <span className="font-semibold text-gray-300">
                     {roundBreakdown.playersTotal - roundBreakdown.answered}
                   </span>{" "}
                   fără răspuns
                 </>
               ) : null}
             </p>
-            <ul className="mt-4 space-y-2 border-t border-[var(--foreground)]/10 pt-4 text-sm">
+            <ul className="mt-4 space-y-3 border-t border-gray-700/50 pt-6 text-sm">
               {question.options.map((opt, i) => (
                 <li
                   key={i}
-                  className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 ${
+                  className={`flex items-center justify-between gap-3 rounded-2xl px-4 py-3 ${
                     typeof idx === "number" && i === idx
-                      ? "bg-emerald-500/15 font-medium"
-                      : "bg-[var(--foreground)]/5"
+                      ? "border border-emerald-500/35 bg-emerald-500/10 font-semibold"
+                      : "border border-gray-700/40 bg-[#0a0f1e]"
                   }`}
                 >
-                  <span className="text-left">
+                  <span className="text-left text-gray-100">
                     {i + 1}. {opt}
                     {typeof idx === "number" && i === idx ? " ✓" : ""}
                   </span>
-                  <span className="shrink-0 tabular-nums text-[var(--foreground)]/70">
+                  <span className="shrink-0 tabular-nums text-gray-400">
                     {roundBreakdown.perOption[i]} voturi
                   </span>
                 </li>
@@ -741,45 +836,24 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
         )}
 
         {roundBreakdown == null && (
-          <p className="mb-8 text-center text-sm text-[var(--foreground)]/55">
+          <p className="mb-8 text-center text-sm text-gray-400">
             Se încarcă statisticile…
           </p>
         )}
 
         {actionErr != null && (
-          <p className="mb-4 text-center text-sm text-red-600 dark:text-red-400">
+          <p className="mb-4 text-center text-sm text-red-400">
             {actionErr}
           </p>
         )}
-
-        <div className="flex flex-col items-center gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleProceed}
-            className="min-h-12 w-full max-w-sm rounded-xl bg-[var(--foreground)] px-8 font-bold uppercase tracking-wide text-[var(--background)] disabled:opacity-50 sm:w-auto"
-          >
-            {busy
-              ? "…"
-              : isLastRound
-                ? "Încheie jocul"
-                : "Următoarea întrebare"}
-          </button>
-          {isLastRound && (
-            <p className="max-w-sm text-center text-xs text-[var(--foreground)]/50">
-              După apăsare, sesiunea se închide și participanții văd
-              ecranul final.
-            </p>
-          )}
-        </div>
       </div>
     );
   }
 
   if (status === "question_active" && question == null) {
     return (
-      <div className="flex min-h-dvh items-center justify-center px-4">
-        <p className="text-[var(--foreground)]/70">Întrebare indisponibilă.</p>
+      <div className="flex min-h-dvh items-center justify-center px-6 text-gray-400">
+        <p>Întrebare indisponibilă.</p>
       </div>
     );
   }
@@ -787,46 +861,57 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
   if (status === "question_active" && showIntermission && sessionId) {
     const maxScore = Math.max(1, ...leaderTop.map((p) => p.score));
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-zinc-950 via-zinc-900 to-black px-4 py-10 text-white">
+      <div className="flex min-h-dvh flex-col bg-[#0a0f1e] px-6 py-6 text-gray-100">
+        <div className="shrink-0 pb-4">
+          <button
+            type="button"
+            onClick={handleQuitGame}
+            disabled={quitBusy || !sessionId}
+            className="rounded-2xl border border-red-500/45 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-200 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-45"
+          >
+            {quitBusy ? "…" : "Termină jocul!"}
+          </button>
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center py-4">
         <div className="w-full max-w-lg">
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="mb-6 text-center"
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="mb-8 text-center"
           >
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/60">
-              Leaderboard
-            </p>
-            <h2 className="mt-2 text-2xl font-black tracking-tight">
+            <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-[#f59e0b] sm:text-3xl">
               Pregătește-te…
             </h2>
+            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.22em] text-gray-400">
+              Clasament
+            </p>
           </motion.div>
 
-          <motion.ul layout className="space-y-2">
-            {leaderTop.slice(0, 5).map((p, i) => (
+          <motion.ul layout className="space-y-4">
+            {leaderTop.slice(0, 10).map((p, i) => (
               <motion.li
                 key={p.id}
                 layout
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                className="rounded-2xl border border-white/10 bg-white/5 p-3"
+                className="rounded-2xl border border-gray-700/50 bg-[#1a2236] p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
               >
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <span className="flex items-center gap-3">
-                    <span className="w-7 tabular-nums text-white/55">
-                      {i + 1}.
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex w-8 shrink-0 items-center justify-center tabular-nums text-sm font-bold text-gray-400">
+                      {i === 0 ? <span aria-hidden>👑</span> : `${i + 1}.`}
                     </span>
-                    <span className="truncate font-semibold text-white/95">
+                    <span className="truncate font-semibold text-gray-100">
                       {p.display_name}
                     </span>
                   </span>
-                  <span className="font-mono text-sm font-black tabular-nums text-amber-200">
+                  <span className="font-mono text-sm font-extrabold tabular-nums text-[#f59e0b]">
                     {p.score}
                   </span>
                 </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#0a0f1e]">
                   <motion.div
                     layout
                     animate={{
@@ -836,12 +921,13 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
                       )}%`,
                     }}
                     transition={{ type: "spring", stiffness: 260, damping: 28 }}
-                    className="h-full rounded-full bg-gradient-to-r from-amber-400 via-amber-300 to-emerald-300"
+                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
                   />
                 </div>
               </motion.li>
             ))}
           </motion.ul>
+        </div>
         </div>
       </div>
     );
@@ -850,168 +936,129 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
   return (
     <div
       onPointerDown={audio.unlocked ? undefined : audio.unlock}
-      className="mx-auto min-h-dvh max-w-2xl px-4 py-6 pb-[max(2rem,env(safe-area-inset-bottom))]"
+      className="mx-auto min-h-dvh w-full max-w-3xl px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] text-gray-100"
     >
-      <button
-        type="button"
-        onClick={() => {
-          if (!audio.unlocked) audio.unlock();
-          audio.toggleMuted();
-        }}
-        className="fixed right-3 top-3 z-50 rounded-full border border-[var(--foreground)]/15 bg-[var(--background)]/80 px-4 py-2 text-xs font-semibold text-[var(--foreground)] shadow-sm backdrop-blur"
-      >
-        {audio.muted ? "Unmute" : "Mute"}
-      </button>
-      <details className="mb-5 rounded-2xl border border-[var(--foreground)]/12 bg-[var(--background)] p-4">
-        <summary className="cursor-pointer select-none text-sm font-semibold text-[var(--foreground)]">
-          Debug sesiune
-        </summary>
-        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-[var(--foreground)]/80 sm:grid-cols-2">
-          <div className="rounded-lg bg-[var(--foreground)]/5 p-3">
-            <p className="text-xs uppercase tracking-wide text-[var(--foreground)]/55">
-              PIN
-            </p>
-            <p className="mt-1 font-mono tabular-nums">{normalizedPin}</p>
-          </div>
-          <div className="rounded-lg bg-[var(--foreground)]/5 p-3">
-            <p className="text-xs uppercase tracking-wide text-[var(--foreground)]/55">
-              Session ID
-            </p>
-            <p className="mt-1 break-all font-mono">{sessionId ?? "—"}</p>
-          </div>
-          <div className="rounded-lg bg-[var(--foreground)]/5 p-3">
-            <p className="text-xs uppercase tracking-wide text-[var(--foreground)]/55">
-              Quiz
-            </p>
-            <p className="mt-1 font-medium">{quizTitle ?? "—"}</p>
-          </div>
-          <div className="rounded-lg bg-[var(--foreground)]/5 p-3">
-            <p className="text-xs uppercase tracking-wide text-[var(--foreground)]/55">
-              Setări
-            </p>
-            <p className="mt-1">
-              limită:{" "}
-              <span className="font-medium tabular-nums">
-                {sessionQuestionLimit ?? "toate"}
-              </span>
-              {" · "}
-              random:{" "}
-              <span className="font-medium">
-                {randomizeQuestions ? "da" : "nu"}
-              </span>
-              {" · "}
-              seed:{" "}
-              <span className="font-mono tabular-nums">
-                {sessionSeed ?? "—"}
-              </span>
-            </p>
-          </div>
-          <div className="rounded-lg bg-[var(--foreground)]/5 p-3">
-            <p className="text-xs uppercase tracking-wide text-[var(--foreground)]/55">
-              Stare
-            </p>
-            <p className="mt-1">
-              {status} · Q{" "}
-              <span className="tabular-nums">{questionIndex + 1}</span>/
-              <span className="tabular-nums">{quizLen || "—"}</span>
-            </p>
-            <p className="mt-1 text-xs text-[var(--foreground)]/60">
-              created: {createdAt ?? "—"}
-              <br />
-              started: {startedAt ?? "—"}
-              <br />
-              q_started: {questionStartedAt ?? "—"}
-            </p>
-          </div>
-          <div className="rounded-lg bg-[var(--foreground)]/5 p-3">
-            <p className="text-xs uppercase tracking-wide text-[var(--foreground)]/55">
-              Participanți / răspunsuri
-            </p>
-            <p className="mt-1">
-              participanți: <span className="tabular-nums">{playersCount}</span>
-              {" · "}
-              răspunsuri: <span className="tabular-nums">{responseCount}</span>
-            </p>
-          </div>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleQuitGame}
+            disabled={quitBusy || !sessionId}
+            className="rounded-2xl border border-red-500/45 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-200 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-45"
+          >
+            {quitBusy ? "…" : "Termină jocul!"}
+          </button>
         </div>
-      </details>
+        <button
+          type="button"
+          onClick={() => {
+            if (!audio.unlocked) audio.unlock();
+            audio.toggleMuted();
+          }}
+          className="rounded-2xl border border-gray-700/50 bg-[#1a2236] px-4 py-2 text-xs font-semibold text-[#f59e0b] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          {audio.muted ? "Unmute" : "Mute"}
+        </button>
+      </div>
 
       <AnimatePresence mode="wait">
         <motion.div
           key={`qa-q-${questionIndex}-${question?.id ?? "none"}`}
-          initial={{ opacity: 0, y: 14 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.2 }}
+          exit={{ opacity: 0, y: -12 }}
+          transition={{ duration: 0.25 }}
         >
-          <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm font-medium text-[var(--foreground)]/60">
-              Întrebarea {questionIndex + 1} / {quizLen}
-            </span>
-            <span className="rounded-full bg-[var(--foreground)]/10 px-4 py-1.5 font-mono text-xl tabular-nums text-[var(--foreground)]">
-              {timeLeft != null ? timeLeft : "—"}s
-            </span>
-          </header>
-
-          <article className="rounded-2xl border border-[var(--foreground)]/12 bg-[var(--background)] p-6 shadow-sm sm:p-8">
-            <h1 className="text-xl font-semibold leading-snug text-[var(--foreground)] sm:text-2xl">
+          <article className="rounded-2xl border border-gray-700/50 bg-[#1a2236] p-8 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-10">
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm font-semibold text-gray-400">
+                Întrebarea {questionIndex + 1} / {quizLen}
+              </p>
+              <span className="rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-4 py-2 font-mono text-sm font-extrabold tabular-nums text-[#f59e0b] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                {timeLeft != null ? timeLeft : "—"}s
+              </span>
+            </div>
+            <h1 className="mt-4 text-left text-xl font-extrabold leading-snug tracking-tight text-gray-100 sm:text-2xl">
               {question!.text}
             </h1>
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
               {question!.options.map((opt, i) => {
                 const tone =
                   i === 0
-                    ? "bg-red-500 text-white"
+                    ? "bg-red-500 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.22)]"
                     : i === 1
-                      ? "bg-blue-600 text-white"
+                      ? "bg-blue-600 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.2)]"
                       : i === 2
-                        ? "bg-amber-400 text-zinc-900"
-                        : "bg-emerald-600 text-white";
+                        ? "bg-amber-400 text-zinc-900 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.35)]"
+                        : "bg-emerald-600 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.18)]";
                 return (
-                  <div
+                  <motion.div
                     key={i}
-                    className={`relative overflow-hidden rounded-2xl p-4 shadow-sm ${tone}`}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, delay: i * 0.05 }}
+                    className={`relative overflow-hidden rounded-2xl p-5 ${tone}`}
                   >
-                    <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="mb-3 flex items-center justify-between gap-3">
                       <span className="text-xs font-black uppercase tracking-wider opacity-90">
                         &nbsp;
                       </span>
-                      <span className="rounded-full bg-black/10 px-3 py-1 font-mono text-sm font-black tabular-nums">
+                      <span className="rounded-full bg-black/15 px-3 py-1 font-mono text-sm font-black tabular-nums">
                         {i + 1}
                       </span>
                     </div>
-                    <p className="text-sm font-semibold leading-snug opacity-95">
+                    <p className="text-sm font-bold leading-snug opacity-95">
                       {opt}
                     </p>
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
           </article>
 
-          <section className="mt-6 rounded-2xl border border-[var(--foreground)]/12 bg-[var(--background)] p-4 sm:p-5">
-            <div className="mb-4 flex items-baseline justify-between gap-3">
-              <p className="text-sm font-semibold text-[var(--foreground)]">
+          <footer className="mt-8 flex flex-col gap-6">
+            <p className="text-center text-base font-medium text-gray-100">
+              <span className="font-extrabold text-[#f59e0b]">{responseCount}</span>{" "}
+              din {playersCount} participanți au răspuns
+            </p>
+            {actionErr != null && (
+              <p className="text-center text-sm text-red-400">
+                {actionErr}
+              </p>
+            )}
+            <button
+              type="button"
+              disabled={!canShowResults || busy}
+              onClick={handleShowResults}
+              className="min-h-14 rounded-2xl bg-[#f59e0b] px-8 font-extrabold uppercase tracking-wide text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
+            >
+              {busy ? "…" : "Afișează rezultatele"}
+            </button>
+          </footer>
+
+          <section className="mt-8 rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
+            <div className="mb-6 flex items-baseline justify-between gap-3">
+              <p className="text-sm font-extrabold text-gray-100">
                 Voturi live
               </p>
-              <p className="text-xs text-[var(--foreground)]/55">
+              <p className="text-xs font-semibold text-[#f59e0b]">
                 {responseCount}/{playersCount}
               </p>
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 gap-4">
               {OPTION_TONES.map((t, i) => {
                 const max = Math.max(1, ...liveVotes);
                 const pct = Math.round((liveVotes[i]! / max) * 100);
                 const shouldPulse = timeUp && correctIdx === i;
                 return (
                   <div key={t.label} className="flex flex-col items-center gap-2">
-                    <div className="grid h-28 w-full place-items-end overflow-hidden rounded-2xl bg-[var(--foreground)]/10 p-2">
+                    <div className="grid h-28 w-full place-items-end overflow-hidden rounded-2xl border border-gray-700/40 bg-[#0a0f1e] p-2 shadow-inner">
                       <motion.div
                         initial={{ height: 0 }}
                         animate={{ height: `${Math.max(6, pct)}%` }}
                         transition={{ type: "spring", stiffness: 260, damping: 28 }}
                         className={`w-full rounded-xl bg-gradient-to-t ${t.bar} ${
-                          shouldPulse ? "shadow-[0_0_0_2px_rgba(255,255,255,0.35)_inset]" : ""
+                          shouldPulse ? "shadow-[0_0_0_2px_rgba(245,158,11,0.5)_inset]" : ""
                         }`}
                       >
                         {shouldPulse ? (
@@ -1025,34 +1072,15 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
                         ) : null}
                       </motion.div>
                     </div>
-                    <div className="text-center text-xs text-[var(--foreground)]/70">
-                      <div className="font-semibold">{t.label}</div>
-                      <div className="font-mono tabular-nums">{liveVotes[i]}</div>
+                    <div className="text-center text-xs text-gray-400">
+                      <div className="font-semibold text-gray-300">{t.label}</div>
+                      <div className="font-mono tabular-nums text-[#f59e0b]">{liveVotes[i]}</div>
                     </div>
                   </div>
                 );
               })}
             </div>
           </section>
-
-          <footer className="mt-8 flex flex-col gap-4">
-            <p className="text-center text-base font-medium text-[var(--foreground)]">
-              {responseCount} din {playersCount} participanți au răspuns
-            </p>
-            {actionErr != null && (
-              <p className="text-center text-sm text-red-600 dark:text-red-400">
-                {actionErr}
-              </p>
-            )}
-            <button
-              type="button"
-              disabled={!canShowResults || busy}
-              onClick={handleShowResults}
-              className="min-h-12 rounded-xl bg-[var(--foreground)] px-8 font-bold uppercase tracking-wide text-[var(--background)] disabled:cursor-not-allowed disabled:opacity-35"
-            >
-              {busy ? "…" : "Afișează rezultatele"}
-            </button>
-          </footer>
         </motion.div>
       </AnimatePresence>
     </div>

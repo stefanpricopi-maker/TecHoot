@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import Link from "next/link";
@@ -30,23 +29,23 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
   const rest = sorted.slice(3);
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-zinc-950 via-zinc-900 to-black px-4 py-10 pb-[max(2rem,env(safe-area-inset-bottom))] text-white">
+    <div className="min-h-dvh bg-[#0a0f1e] px-6 py-10 pb-[max(2rem,env(safe-area-inset-bottom))] text-gray-100">
       <motion.header
-        initial={reduceMotion ? undefined : { opacity: 0, y: 10 }}
+        initial={reduceMotion ? undefined : { opacity: 0, y: 20 }}
         animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: "easeOut" }}
         className="mx-auto max-w-2xl text-center"
       >
-        <p className="text-sm font-medium uppercase tracking-[0.2em] text-amber-400/90">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-400">
           Clasament
         </p>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+        <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-[#f59e0b] sm:text-3xl md:text-4xl">
           Sesiunea{" "}
-          <span className="font-mono tabular-nums tracking-widest text-white">
+          <span className="font-mono tabular-nums tracking-widest text-gray-100">
             {pin}
           </span>
         </h1>
-        <p className="mt-2 text-sm text-white/55">
+        <p className="mt-3 text-sm text-gray-400">
           {sorted.length === 0
             ? "Niciun jucător în această sesiune."
             : `${sorted.length} participanți`}
@@ -105,9 +104,9 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
             initial={reduceMotion ? undefined : { opacity: 0, y: 14 }}
             animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: "easeOut", delay: 0.22 }}
-            className="mx-auto mt-10 max-w-md rounded-2xl border border-white/10 bg-white/5 p-1"
+            className="mx-auto mt-4 max-w-md rounded-2xl border border-gray-700/50 bg-[#1a2236] p-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:mt-6"
           >
-            <ul className="divide-y divide-white/10">
+            <ul className="divide-y divide-gray-700/50">
               {rest.map((p, i) => (
                 <motion.li
                   key={p.id}
@@ -118,17 +117,17 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
                     ease: "easeOut",
                     delay: 0.24 + i * 0.03,
                   }}
-                  className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                  className="flex items-center justify-between gap-3 px-4 py-4 text-sm"
                 >
                   <span className="flex items-center gap-3">
-                    <span className="w-8 tabular-nums text-white/45">
+                    <span className="w-8 tabular-nums text-gray-500">
                       {i + 4}.
                     </span>
-                    <span className="font-medium text-white/95">
+                    <span className="font-semibold text-gray-100">
                       {p.display_name}
                     </span>
                   </span>
-                  <span className="tabular-nums font-semibold text-amber-200/90">
+                  <span className="tabular-nums font-extrabold text-[#f59e0b]">
                     {p.score}
                   </span>
                 </motion.li>
@@ -138,18 +137,18 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
         </>
       )}
 
-      <nav className="mx-auto mt-10 flex max-w-md flex-col gap-3 sm:flex-row sm:justify-center">
+      <nav className="mx-auto mt-10 flex max-w-md flex-col gap-4 sm:flex-row sm:justify-center">
         <Link
           href="/"
-          className="rounded-xl border border-white/20 px-6 py-3 text-center text-sm font-medium text-white/90 transition-colors hover:bg-white/10"
+          className="rounded-2xl border border-gray-700/50 bg-[#1a2236] px-8 py-3 text-center text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
           Acasă
         </Link>
         <Link
           href="/host"
-          className="rounded-xl bg-white px-6 py-3 text-center text-sm font-semibold text-zinc-900 transition-opacity hover:opacity-90"
+          className="rounded-2xl bg-[#f59e0b] px-8 py-3 text-center text-sm font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
-          Admin nou
+          Joc nou
         </Link>
       </nav>
     </div>
@@ -169,8 +168,7 @@ function PodiumBlock({
   barClass: string;
   label: string;
 }) {
-  const medal =
-    place === 1 ? "🥇" : place === 2 ? "🥈" : "🥉";
+  const medal = place === 1 ? "👑" : place === 2 ? "🥈" : "🥉";
 
   return (
     <div className={`flex flex-col items-center ${className}`}>
@@ -180,19 +178,19 @@ function PodiumBlock({
             <p className="text-2xl sm:text-3xl" aria-hidden>
               {medal}
             </p>
-            <p className="mt-1 truncate px-0.5 text-xs font-bold text-white sm:text-sm">
+            <p className="mt-1 truncate px-0.5 text-xs font-bold text-gray-100 sm:text-sm">
               {player.display_name}
             </p>
-            <p className="mt-0.5 font-mono text-lg font-black tabular-nums text-amber-300 sm:text-xl">
+            <p className="mt-0.5 font-mono text-lg font-extrabold tabular-nums text-[#f59e0b] sm:text-xl">
               {player.score}
             </p>
           </>
         ) : (
-          <p className="pt-6 text-xs text-white/35">—</p>
+          <p className="pt-6 text-xs text-gray-600">—</p>
         )}
       </div>
       <div
-        className={`flex w-full flex-col items-center justify-end rounded-t-xl px-2 pb-3 pt-6 ${barClass}`}
+        className={`flex w-full flex-col items-center justify-end rounded-t-2xl px-2 pb-3 pt-6 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.12)] ${barClass}`}
       >
         <span className="text-3xl font-black text-black/25 sm:text-4xl">
           {label}

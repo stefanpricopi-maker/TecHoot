@@ -133,6 +133,153 @@ export async function listQuizzes(): Promise<ListQuizzesResult> {
   };
 }
 
+const ADMIN_QUESTIONS_PAGE_SIZE = 50;
+
+export type AdminQuestionRowDto = {
+  id: string;
+  quiz_id: string;
+  prompt: string;
+  options: string[];
+  correct_option_index: number;
+  order_index: number;
+  time_limit_seconds: number | null;
+};
+
+export type ListQuizQuestionsAdminPageResult =
+  | {
+      ok: true;
+      questions: AdminQuestionRowDto[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }
+  | { ok: false; error: string };
+
+/** Paginare întrebări pentru ecranul Admin (service role). */
+export async function listQuizQuestionsAdminPage(
+  quizIdRaw: string,
+  page: number,
+): Promise<ListQuizQuestionsAdminPageResult> {
+  const quizId = quizIdRaw.trim();
+  if (!isUuid(quizId)) {
+    return { ok: false, error: "ID quiz invalid." };
+  }
+  const supabase = createSupabaseAdminClient();
+  const { count, error: cErr } = await supabase
+    .from("questions")
+    .select("*", { count: "exact", head: true })
+    .eq("quiz_id", quizId);
+  if (cErr) {
+    return { ok: false, error: cErr.message };
+  }
+  const total = count ?? 0;
+  const pageSize = ADMIN_QUESTIONS_PAGE_SIZE;
+  const safePage = Math.max(1, Math.floor(Number.isFinite(page) ? page : 1));
+  const from = (safePage - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, error } = await supabase
+    .from("questions")
+    .select(
+      "id, quiz_id, prompt, options, correct_option_index, order_index, time_limit_seconds",
+    )
+    .eq("quiz_id", quizId)
+    .order("order_index", { ascending: true })
+    .order("id", { ascending: true })
+    .range(from, to);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+
+  const questions: AdminQuestionRowDto[] = (data ?? []).map((row) => {
+    const raw = row.options as unknown;
+    const options = Array.isArray(raw)
+      ? (raw as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    return {
+      id: row.id as string,
+      quiz_id: row.quiz_id as string,
+      prompt: String(row.prompt ?? ""),
+      options,
+      correct_option_index: Number(row.correct_option_index ?? 0),
+      order_index: Number(row.order_index ?? 0),
+      time_limit_seconds:
+        row.time_limit_seconds == null
+          ? null
+          : Number(row.time_limit_seconds),
+    };
+  });
+
+  return { ok: true, questions, total, page: safePage, pageSize };
+}
+
+export async function updateQuizQuestionAdmin(input: {
+  questionId: string /** UUID */;
+  prompt: string;
+  options: string[];
+  correctOptionIndex: number;
+  timeLimitSeconds: number | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!isUuid(input.questionId)) {
+    return { ok: false, error: "ID întrebare invalid." };
+  }
+  const prompt = input.prompt.trim();
+  if (!prompt) {
+    return { ok: false, error: "Textul întrebării nu poate fi gol." };
+  }
+  const opts = input.options.map((o) => String(o).trim()).filter(Boolean);
+  if (opts.length < 2 || opts.length > 4) {
+    return { ok: false, error: "Sunt necesare între 2 și 4 variante de răspuns." };
+  }
+  if (
+    input.correctOptionIndex < 0 ||
+    input.correctOptionIndex >= opts.length
+  ) {
+    return { ok: false, error: "Răspunsul corect trebuie să fie o variantă validă." };
+  }
+  if (input.timeLimitSeconds != null) {
+    const t = Number(input.timeLimitSeconds);
+    if (!Number.isFinite(t) || t <= 0) {
+      return { ok: false, error: "Limita de timp trebuie să fie un număr positiv sau goală." };
+    }
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("questions")
+    .update({
+      prompt,
+      options: opts,
+      correct_option_index: input.correctOptionIndex,
+      time_limit_seconds:
+        input.timeLimitSeconds == null
+          ? null
+          : Math.floor(Number(input.timeLimitSeconds)),
+    })
+    .eq("id", input.questionId);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+export async function deleteQuizQuestionAdmin(
+  questionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const id = questionId.trim();
+  if (!isUuid(id)) {
+    return { ok: false, error: "ID întrebare invalid." };
+  }
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase.from("questions").delete().eq("id", id);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
 const MAX_PIN_ATTEMPTS = 25;
 const BASE_SCORE_CORRECT = 1000;
 const MAX_SPEED_BONUS = 500;
@@ -464,7 +611,8 @@ export async function startGame(sessionId: string): Promise<StartGameResult> {
       status: "question_active",
       started_at: now,
       current_question_index: 0,
-      current_question_started_at: now,
+      // Timer will be started explicitly by host after intermission.
+      current_question_started_at: null,
     })
     .eq("id", sessionId)
     .eq("status", "lobby")
@@ -623,7 +771,7 @@ export async function proceedAfterResults(
 /** Pornește timerul întrebării curente dacă nu a pornit deja. */
 export async function startCurrentQuestionTimer(
   sessionId: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; startedAt: string } | { ok: false; error: string }> {
   const auth = await requireAdminForSession(sessionId);
   if (!auth.ok) return { ok: false, error: auth.error };
   const supabase = createSupabaseAdminClient();
@@ -635,15 +783,67 @@ export async function startCurrentQuestionTimer(
     .eq("id", sessionId)
     .eq("status", "question_active")
     .is("current_question_started_at", null)
-    .select("id")
+    .select("id, current_question_started_at")
     .maybeSingle();
 
   if (error) {
     return { ok: false, error: error.message };
   }
-  // Idempotent: if already started, treat as ok.
-  if (!updated) {
+
+  const started =
+    (updated?.current_question_started_at as string | undefined) ?? null;
+  if (started) {
+    return { ok: true, startedAt: started };
+  }
+
+  const { data: sess } = await supabase
+    .from("sessions")
+    .select("status, current_question_started_at")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  const existing = sess?.current_question_started_at as string | null;
+  if (existing) {
+    return { ok: true, startedAt: existing };
+  }
+
+  return {
+    ok: false,
+    error:
+      "Cronometrul nu s-a pornit. Folosește același browser cu care ai creat sesiunea (cookie Admin), sau reîncarcă pagina gazdei.",
+};
+}
+
+/** Oprește prematur sesiunea (gazdă): participanții trec la clasament / ecran final. */
+export async function quitGameSession(
+  sessionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireAdminForSession(sessionId);
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const supabase = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+
+  const { data: row } = await supabase
+    .from("sessions")
+    .select("status")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (!row) {
+    return { ok: false, error: "Sesiunea nu există." };
+  }
+  if ((row.status as string) === "finished") {
     return { ok: true };
+  }
+
+  const { error } = await supabase
+    .from("sessions")
+    .update({ status: "finished", ended_at: now })
+    .eq("id", sessionId)
+    .in("status", ["lobby", "question_active", "showing_results"]);
+
+  if (error) {
+    return { ok: false, error: error.message };
   }
   return { ok: true };
 }
@@ -793,22 +993,73 @@ export async function submitAnswer(
     }
   }
 
-  const { error: insErr } = await supabase.from("round_responses").insert({
-    session_id: sessionId,
-    player_id: playerId,
-    question_index: qIdx,
-    selected_option_index: answerIndex,
-    points_earned: points,
-  });
+  const { data: existingResp } = await supabase
+    .from("round_responses")
+    .select("id, selected_option_index, points_earned")
+    .eq("player_id", playerId)
+    .eq("question_index", qIdx)
+    .maybeSingle();
 
-  if (insErr) {
-    if (isUniqueViolation(insErr)) {
+  // First answer for this round → insert.
+  if (!existingResp?.id) {
+    const { error: insErr } = await supabase.from("round_responses").insert({
+      session_id: sessionId,
+      player_id: playerId,
+      question_index: qIdx,
+      selected_option_index: answerIndex,
+      points_earned: points,
+    });
+
+    if (insErr) {
+      if (isUniqueViolation(insErr)) {
+        // Race: someone inserted between select+insert. Treat as update path.
+      } else {
+        return { ok: false, error: insErr.message };
+      }
+    } else {
+      if (points !== 0) {
+        const { data: pl } = await supabase
+          .from("players")
+          .select("score")
+          .eq("id", playerId)
+          .single();
+        if (pl) {
+          await supabase
+            .from("players")
+            .update({ score: (pl.score as number) + points })
+            .eq("id", playerId);
+        }
+      }
       return { ok: true };
     }
-    return { ok: false, error: insErr.message };
   }
 
-  if (points > 0) {
+  // Change answer within the same round → update response + apply score delta.
+  const existingId = (existingResp?.id as string | undefined) ?? null;
+  if (!existingId) {
+    // Extremely unlikely (race), but keep safe.
+    return { ok: false, error: "Nu s-a putut actualiza răspunsul (lipsește ID)." };
+  }
+  const prevPoints = Number(existingResp?.points_earned ?? 0);
+  const prevIdx = Number(existingResp?.selected_option_index ?? -1);
+  if (prevIdx === answerIndex) {
+    return { ok: true };
+  }
+  const delta = points - prevPoints;
+
+  const { error: updErr } = await supabase
+    .from("round_responses")
+    .update({
+      selected_option_index: answerIndex,
+      points_earned: points,
+    })
+    .eq("id", existingId);
+
+  if (updErr) {
+    return { ok: false, error: updErr.message };
+  }
+
+  if (delta !== 0) {
     const { data: pl } = await supabase
       .from("players")
       .select("score")
@@ -817,7 +1068,7 @@ export async function submitAnswer(
     if (pl) {
       await supabase
         .from("players")
-        .update({ score: (pl.score as number) + points })
+        .update({ score: (pl.score as number) + delta })
         .eq("id", playerId);
     }
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { joinSession } from "@/app/actions/game-actions";
 import {
@@ -16,6 +16,23 @@ export default function JoinPage() {
   const [nickname, setNickname] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const urlPin = url.searchParams.get("pin");
+    if (urlPin && pin.trim() === "") {
+      setPin(urlPin);
+    }
+  }, [pin]);
+
+  const handleBack = useCallback(() => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/");
+  }, [router]);
 
   const handleJoin = useCallback(async () => {
     setError(null);
@@ -38,20 +55,27 @@ export default function JoinPage() {
   }, [pin, nickname, router]);
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-4 py-safe pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]">
-      <div className="w-full max-w-md space-y-6">
+    <div className="relative flex min-h-dvh flex-col items-center justify-center px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2rem,env(safe-area-inset-top))] text-gray-100">
+      <button
+        type="button"
+        onClick={handleBack}
+        className="absolute left-6 top-6 min-h-11 rounded-2xl border border-gray-700/50 bg-[#1a2236] px-5 text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+      >
+        Back
+      </button>
+      <div className="w-full max-w-md space-y-8">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
+          <h1 className="text-3xl font-extrabold tracking-tight text-[#f59e0b]">
             Intră în joc
           </h1>
-          <p className="mt-2 text-sm text-[var(--foreground)]/70">
-            Introdu codul de la Admin și cum vrei să te vadă ceilalți.
+          <p className="mt-3 text-sm text-gray-400">
+            Introdu PIN sesiune și numele tău.
           </p>
         </div>
 
-        <div className="space-y-4 rounded-2xl border border-[var(--foreground)]/15 bg-[var(--background)] p-5 shadow-sm sm:p-6">
+        <div className="space-y-6 rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-[var(--foreground)]">
+            <span className="text-sm font-medium text-gray-100">
               PIN sesiune
             </span>
             <input
@@ -61,29 +85,29 @@ export default function JoinPage() {
               placeholder="ex. 004812"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
-              className="min-h-12 w-full rounded-xl border border-[var(--foreground)]/20 bg-[var(--background)] px-4 text-lg tracking-widest text-[var(--foreground)] shadow-inner outline-none ring-offset-2 placeholder:text-[var(--foreground)]/40 focus:border-[var(--foreground)]/50 focus:ring-2 focus:ring-[var(--foreground)]/20"
+              className="min-h-12 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-4 text-lg tracking-widest text-gray-100 shadow-inner outline-none placeholder:text-gray-500 focus:border-[#f59e0b]/50 focus:ring-2 focus:ring-[#f59e0b]/25"
             />
           </label>
 
           <label className="block space-y-2">
-            <span className="text-sm font-medium text-[var(--foreground)]">
-              Poreclă
+            <span className="text-sm font-medium text-gray-100">
+              Numele tău
             </span>
             <input
               type="text"
               autoComplete="nickname"
               maxLength={32}
-              placeholder="cum te numești"
+              placeholder="Cum te numești"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              className="min-h-12 w-full rounded-xl border border-[var(--foreground)]/20 bg-[var(--background)] px-4 text-base text-[var(--foreground)] shadow-inner outline-none ring-offset-2 placeholder:text-[var(--foreground)]/40 focus:border-[var(--foreground)]/50 focus:ring-2 focus:ring-[var(--foreground)]/20"
+              className="min-h-12 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-4 text-base text-gray-100 shadow-inner outline-none placeholder:text-gray-500 focus:border-[#f59e0b]/50 focus:ring-2 focus:ring-[#f59e0b]/25"
             />
           </label>
 
           {error != null && (
             <p
               role="alert"
-              className="rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300"
+              className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
             >
               {error}
             </p>
@@ -93,7 +117,7 @@ export default function JoinPage() {
             type="button"
             onClick={handleJoin}
             disabled={loading || pin.trim() === "" || nickname.trim() === ""}
-            className="min-h-12 w-full rounded-xl bg-[var(--foreground)] px-4 text-base font-semibold text-[var(--background)] transition-opacity active:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+            className="min-h-12 w-full rounded-2xl bg-[#f59e0b] px-4 text-base font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:scale-100"
           >
             {loading ? "Conectare…" : "Join"}
           </button>

@@ -16,10 +16,30 @@ import { useGameAudio } from "@/hooks/useGameAudio";
 import type { GameSession } from "@/types/game";
 
 export const KAHOOT_CELLS = [
-  { shape: "1", label: "Opțiunea 1 (roșu)", className: "bg-red-500 text-white" },
-  { shape: "2", label: "Opțiunea 2 (albastru)", className: "bg-blue-600 text-white" },
-  { shape: "3", label: "Opțiunea 3 (galben)", className: "bg-amber-400 text-zinc-900" },
-  { shape: "4", label: "Opțiunea 4 (verde)", className: "bg-green-600 text-white" },
+  {
+    shape: "1",
+    label: "Opțiunea 1 (roșu)",
+    className:
+      "bg-red-500 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.22),inset_0_-2px_6px_rgba(0,0,0,0.18)]",
+  },
+  {
+    shape: "2",
+    label: "Opțiunea 2 (albastru)",
+    className:
+      "bg-blue-600 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.2),inset_0_-2px_6px_rgba(0,0,0,0.2)]",
+  },
+  {
+    shape: "3",
+    label: "Opțiunea 3 (galben)",
+    className:
+      "bg-amber-400 text-zinc-900 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.35),inset_0_-2px_6px_rgba(0,0,0,0.12)]",
+  },
+  {
+    shape: "4",
+    label: "Opțiunea 4 (verde)",
+    className:
+      "bg-green-600 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.18),inset_0_-2px_6px_rgba(0,0,0,0.2)]",
+  },
 ] as const;
 
 type PlayerGameClientProps = {
@@ -28,12 +48,14 @@ type PlayerGameClientProps = {
 
 export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   const router = useRouter();
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<GameSession["status"]>("lobby");
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answered, setAnswered] = useState(false);
   const [busyIndex, setBusyIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [timeUp, setTimeUp] = useState(false);
+  const [timeLeftSeconds, setTimeLeftSeconds] = useState<number | null>(null);
   const [roundOutcome, setRoundOutcome] = useState<
     "loading" | "correct" | "wrong" | "none"
   >("loading");
@@ -48,6 +70,14 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   const [pickedOption, setPickedOption] = useState<number | null>(null);
   const [rankPos, setRankPos] = useState<number | null>(null);
   const [rankTotal, setRankTotal] = useState<number | null>(null);
+  const [leaderTop, setLeaderTop] = useState<
+    { id: string; display_name: string; score: number }[]
+  >([]);
+
+  type LeaderTopRow = { id: string; display_name: string | null; score: number };
+
+  const sessionIdRef = useRef<string | null>(null);
+  sessionIdRef.current = sessionId;
 
   const audio = useGameAudio({
     role: "player",
@@ -83,12 +113,15 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   useEffect(() => {
     if (status !== "question_active" || !currentQ || !questionStartedAt) {
       setTimeUp(false);
+      setTimeLeftSeconds(null);
       return;
     }
     const startedMs = new Date(questionStartedAt).getTime();
     const limitMs = currentQ.timeLimit * 1000;
     const tick = () => {
       const elapsed = Date.now() - startedMs;
+      const remaining = Math.max(0, limitMs - elapsed);
+      setTimeLeftSeconds(Math.ceil(remaining / 1000));
       setTimeUp(elapsed >= limitMs);
     };
     tick();
@@ -101,18 +134,20 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
     const { data } = await supabase
       .from("sessions")
       .select(
-        "status, current_question_index, quiz_id, question_count, question_seed, randomize_questions, current_question_started_at",
+        "id, status, current_question_index, quiz_id, question_count, question_seed, randomize_questions, current_question_started_at",
       )
       .eq("pin", normalizedPin)
       .maybeSingle();
     if (!data) {
       return;
     }
+    setSessionId((data.id as string | null) ?? null);
     setStatus(data.status as GameSession["status"]);
     setQuestionIndex(data.current_question_index as number);
     setAnswered(false);
     setRoundOutcome("loading");
     setPointsEarned(null);
+    setPickedOption(null);
     setSessionQuestionLimit((data.question_count as number | null) ?? null);
     setSessionSeed((data.question_seed as number | null) ?? null);
     setRandomizeQuestions((data.randomize_questions as boolean | null) ?? true);
@@ -128,6 +163,27 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
       setQuestions([]);
     }
   }, [normalizedPin]);
+
+  const refreshTop5 = useCallback(
+    async (sid: string) => {
+      const supabase = createSupabaseClient();
+      const { data } = await supabase
+        .from("players")
+        .select("id, display_name, score")
+        .eq("session_id", sid)
+        .order("score", { ascending: false })
+        .limit(5);
+      const rows = (data ?? []) as unknown as LeaderTopRow[];
+      setLeaderTop(
+        rows.map((p) => ({
+          id: p.id,
+          display_name: p.display_name ?? "—",
+          score: p.score ?? 0,
+        })),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     void hydrate();
@@ -172,6 +228,10 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
             setRoundOutcome("loading");
             setPointsEarned(null);
             setTimeUp(false);
+            setPickedOption(null);
+            if (sessionIdRef.current) {
+              void refreshTop5(sessionIdRef.current);
+            }
             setRankPos(null);
             setRankTotal(null);
           } else if (row.status === "showing_results") {
@@ -186,7 +246,7 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
     return () => {
       void supabase.removeChannel(ch);
     };
-  }, [normalizedPin]);
+  }, [normalizedPin, refreshTop5]);
 
   useEffect(() => {
     if (status === "finished") {
@@ -281,7 +341,7 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
 
   const pick = useCallback(
     async (optionIndex: number) => {
-      if (answered || status !== "question_active") {
+      if (status !== "question_active") {
         return;
       }
       const playerId =
@@ -318,8 +378,10 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
 
   if (status === "finished") {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-6 px-4 text-center">
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">Gata!</h1>
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-8 px-6 text-center text-gray-100">
+        <h1 className="text-3xl font-extrabold tracking-tight text-[#f59e0b]">
+          Gata!
+        </h1>
         <button
           type="button"
           onClick={() =>
@@ -327,14 +389,14 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
               `/game/results/${encodeURIComponent(normalizedPin)}`,
             )
           }
-          className="rounded-xl bg-[var(--foreground)] px-6 py-3 font-semibold text-[var(--background)]"
+          className="min-h-12 rounded-2xl bg-[#f59e0b] px-8 py-3 font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
           Vezi clasamentul
         </button>
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="rounded-xl border border-[var(--foreground)]/25 px-6 py-3 font-medium"
+          className="min-h-12 rounded-2xl border border-gray-700/50 bg-[#1a2236] px-8 py-3 font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
           Acasă
         </button>
@@ -344,9 +406,12 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
 
   if (status === "lobby") {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-4 text-center">
-        <p className="text-[var(--foreground)]/75">Chill, Adminul setează tot…</p>
-        <Link href="/join" className="text-sm underline">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-6 text-center text-gray-100">
+        <p className="text-lg text-gray-400">Chill, Adminul setează tot…</p>
+        <Link
+          href="/join"
+          className="text-sm font-semibold text-[#f59e0b] underline-offset-4 hover:underline"
+        >
           Join
         </Link>
       </div>
@@ -376,7 +441,7 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
       roundOutcome === "correct"
         ? "Ești tare! 🔥"
         : roundOutcome === "wrong"
-          ? "Nu-i nimic, te scoți la următoarea! ⚡"
+          ? "Răspuns greșit!"
           : roundOutcome === "none"
             ? "Ține aproape — urmează runda următoare."
             : "";
@@ -417,14 +482,12 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
                   <p className="text-4xl font-black sm:text-5xl">Ești tare! 🔥</p>
                 ) : roundOutcome === "wrong" ? (
                   <p className="text-4xl font-black sm:text-5xl">
-                    Nu-i nimic, te scoți la următoarea! ⚡
+                    Răspuns greșit!
                   </p>
                 ) : (
                   <p className="text-3xl font-black sm:text-4xl">Fără răspuns</p>
                 )}
-                <p className="text-sm font-semibold opacity-90">
-                  {encouragement}
-                </p>
+                
               </div>
 
               {(rankPos != null || rankTotal != null) && (
@@ -449,12 +512,78 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
                 </p>
               )}
 
-              <p className="max-w-sm text-sm opacity-90">
-                Chill, Adminul dă drumul la următoarea.
+              <p className="max-w-sm text-sm font-semibold opacity-90">
+                Întrebări rămase:{" "}
+                <span className="font-mono tabular-nums">
+                  {Math.max(0, effectiveLen - (questionIndex + 1))}
+                </span>
               </p>
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+    );
+  }
+
+  if (status === "question_active" && questionStartedAt == null && sessionId) {
+    const maxScore = Math.max(1, ...leaderTop.map((p) => p.score));
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e] px-6 py-10 text-gray-100">
+        <div className="w-full max-w-lg">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="mb-8 text-center"
+          >
+            <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-[#f59e0b] sm:text-3xl">
+              Pregătește-te…
+            </h2>
+            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.22em] text-gray-400">
+              Clasament
+            </p>
+          </motion.div>
+
+          <motion.ul layout className="space-y-4">
+            {leaderTop.slice(0, 5).map((p, i) => (
+              <motion.li
+                key={p.id}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                className="rounded-2xl border border-gray-700/50 bg-[#1a2236] p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+              >
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex w-8 shrink-0 items-center justify-center tabular-nums text-sm font-bold text-gray-400">
+                      {i === 0 ? <span aria-hidden>👑</span> : `${i + 1}.`}
+                    </span>
+                    <span className="truncate font-semibold text-gray-100">
+                      {p.display_name}
+                    </span>
+                  </span>
+                  <span className="font-mono text-sm font-extrabold tabular-nums text-[#f59e0b]">
+                    {p.score}
+                  </span>
+                </div>
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#0a0f1e]">
+                  <motion.div
+                    layout
+                    animate={{
+                      width: `${Math.max(
+                        8,
+                        Math.round((p.score / maxScore) * 100),
+                      )}%`,
+                    }}
+                    transition={{ type: "spring", stiffness: 260, damping: 28 }}
+                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
+                  />
+                </div>
+              </motion.li>
+            ))}
+          </motion.ul>
+        </div>
       </div>
     );
   }
@@ -465,49 +594,121 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   return (
     <div
       onPointerDown={audio.unlocked ? undefined : audio.unlock}
-      className="min-h-dvh bg-zinc-900 p-3 sm:p-4"
+      className="min-h-dvh bg-[#0a0f1e] p-6 sm:p-8"
     >
       <AnimatePresence mode="wait">
         <motion.div
-          key={`q-${questionIndex}-${currentQ?.id ?? "none"}`}
-          initial={{ opacity: 0, y: 14 }}
+          key={`q-head-${questionIndex}-${currentQ?.id ?? "none"}`}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.2 }}
-          className="mx-auto grid max-w-lg grid-cols-2 gap-3 sm:max-w-xl sm:gap-4"
+          exit={{ opacity: 0, y: -12 }}
+          transition={{ duration: 0.25 }}
+          className="mx-auto mb-6 flex max-w-lg items-start justify-between gap-4 sm:mb-8 sm:max-w-xl"
         >
-          {KAHOOT_CELLS.map((cell, i) => (
-            <button
-              key={i}
-              type="button"
-              disabled={
-                answered ||
-                busyIndex !== null ||
-                i >= optionCount ||
-                timeUp ||
-                questions === null
-              }
-              aria-label={cell.label}
-              onClick={() => pick(i)}
-              className={`flex aspect-[4/3] max-h-[42vh] items-center justify-center rounded-2xl text-5xl shadow-lg transition-transform active:scale-[0.98] disabled:opacity-50 sm:text-6xl ${cell.className}`}
-            >
-              <span className="drop-shadow-md">{cell.shape}</span>
-            </button>
-          ))}
+          <div className="flex-1">
+            <p className="text-left text-sm font-semibold text-gray-400">
+              Întrebarea {questionIndex + 1} / {effectiveLen || "—"}
+            </p>
+            <p className="mt-3 whitespace-pre-wrap break-words text-xl font-extrabold leading-snug tracking-tight text-gray-100 sm:text-2xl">
+              {currentQ?.text ?? "Întrebare…"}
+            </p>
+          </div>
         </motion.div>
       </AnimatePresence>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`q-${questionIndex}-${currentQ?.id ?? "none"}`}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -12 }}
+          transition={{ duration: 0.28 }}
+          className="mx-auto grid max-w-lg grid-cols-2 gap-4 sm:max-w-xl sm:gap-5"
+        >
+          {KAHOOT_CELLS.map((cell, i) => {
+            const optionLabel =
+              currentQ != null && i < optionCount
+                ? (currentQ.options[i] ?? "")
+                : "";
+            const disabled =
+              busyIndex !== null ||
+              i >= optionCount ||
+              timeUp ||
+              questions === null;
+            const isChosen = pickedOption === i;
+            const dimOthers = answered && pickedOption != null && !isChosen;
+            return (
+              <motion.button
+                key={i}
+                type="button"
+                disabled={disabled}
+                aria-label={
+                  optionLabel
+                    ? `${cell.label}: ${optionLabel}`
+                    : cell.label
+                }
+                aria-pressed={isChosen}
+                onClick={() => pick(i)}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: 0.04 + i * 0.05 }}
+                whileHover={
+                  disabled ? undefined : { scale: 1.02 }
+                }
+                whileTap={disabled ? undefined : { scale: 0.98 }}
+                className={`flex min-h-[9.5rem] flex-col items-center justify-center gap-2 rounded-2xl px-3 py-4 text-5xl shadow-none transition-[box-shadow,opacity] disabled:hover:scale-100 sm:min-h-[11rem] sm:gap-2.5 sm:text-6xl ${cell.className} ${
+                  isChosen
+                    ? "box-border border-4 border-white"
+                    : "border-4 border-transparent"
+                } ${dimOthers ? "opacity-45" : ""}`}
+              >
+                <span
+                  className={`shrink-0 drop-shadow-md ${
+                    isChosen
+                      ? i === 2
+                        ? "text-zinc-900/45"
+                        : "text-white/45"
+                      : ""
+                  }`}
+                >
+                  {cell.shape}
+                </span>
+                {optionLabel ? (
+                  <span
+                    className={`line-clamp-3 w-full max-w-[95%] text-center text-xs font-bold leading-snug drop-shadow-sm sm:text-sm ${
+                      isChosen
+                        ? i === 2
+                          ? "text-zinc-900/45"
+                          : "text-white/45"
+                        : i === 2
+                          ? "text-zinc-900/95"
+                          : "text-white/95"
+                    }`}
+                  >
+                    {optionLabel}
+                  </span>
+                ) : null}
+              </motion.button>
+            );
+          })}
+        </motion.div>
+      </AnimatePresence>
+      <div className="mx-auto mt-5 flex max-w-lg justify-center sm:mt-6 sm:max-w-xl">
+        <div className="rounded-2xl border border-gray-700/50 bg-[#1a2236] px-6 py-3 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+            Timp
+          </p>
+          <p className="font-mono text-2xl font-extrabold tabular-nums leading-none text-[#f59e0b]">
+            {timeLeftSeconds ?? "—"}
+          </p>
+        </div>
+      </div>
       {status === "question_active" && timeUp && !answered && (
-        <p className="mt-6 text-center text-sm font-semibold text-white/90">
+        <p className="mt-8 text-center text-sm font-semibold text-gray-400">
           Timp expirat.
         </p>
       )}
-      {answered && (
-        <p className="mt-6 text-center text-sm font-medium leading-relaxed text-white/95">
-          Confirmat{pickedOption != null ? ` (opțiunea ${pickedOption + 1})` : ""}! Chill, ceilalți încă se gândesc...
-        </p>
-      )}
       {error != null && (
-        <p className="mt-4 px-4 text-center text-sm text-red-300">{error}</p>
+        <p className="mt-6 px-4 text-center text-sm text-red-400">{error}</p>
       )}
     </div>
   );
