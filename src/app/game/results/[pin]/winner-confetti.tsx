@@ -18,9 +18,6 @@ export function WinnerConfetti({ active }: WinnerConfettiProps) {
     if (hasFired.current) {
       return;
     }
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
 
     hasFired.current = true;
 

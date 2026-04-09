@@ -63,6 +63,11 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
   const [leaderTop, setLeaderTop] = useState<
     { id: string; display_name: string; score: number }[]
   >([]);
+  const prevLeaderRanksRef = useRef<Record<string, number>>({});
+  const [leaderMove, setLeaderMove] = useState<
+    Record<string, "up" | "down" | "same" | "new">
+  >({});
+  const [leaderLayoutReady, setLeaderLayoutReady] = useState(false);
 
   type LeaderTopRow = { id: string; display_name: string | null; score: number };
 
@@ -182,6 +187,39 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
       return () => window.clearTimeout(id);
     }
   }, [status, questionIndex, sessionId, questionStartedAt, refreshTop10]);
+
+  useEffect(() => {
+    const prev = prevLeaderRanksRef.current;
+    const next: Record<string, "up" | "down" | "same" | "new"> = {};
+    for (let i = 0; i < leaderTop.length; i++) {
+      const id = leaderTop[i]!.id;
+      const prevIdx = prev[id];
+      if (typeof prevIdx !== "number") {
+        next[id] = "new";
+      } else if (prevIdx > i) {
+        next[id] = "up";
+      } else if (prevIdx < i) {
+        next[id] = "down";
+      } else {
+        next[id] = "same";
+      }
+    }
+    setLeaderMove(next);
+    prevLeaderRanksRef.current = Object.fromEntries(
+      leaderTop.map((p, i) => [p.id, i]),
+    );
+  }, [leaderTop]);
+
+  useEffect(() => {
+    if (leaderTop.length === 0) {
+      setLeaderLayoutReady(false);
+      return;
+    }
+    if (leaderLayoutReady) return;
+    // Phase 1: let rows appear first. Phase 2: enable layout glide.
+    const t = window.setTimeout(() => setLeaderLayoutReady(true), 260);
+    return () => window.clearTimeout(t);
+  }, [leaderTop.length, leaderLayoutReady]);
 
   const refreshResponseCount = useCallback(
     async (sid: string, qIdx: number) => {
@@ -888,20 +926,65 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
             </p>
           </motion.div>
 
-          <motion.ul layout className="space-y-4">
+          <motion.ul layout={leaderLayoutReady} className="space-y-4">
             {leaderTop.slice(0, 10).map((p, i) => (
               <motion.li
                 key={p.id}
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                className="rounded-2xl border border-gray-700/50 bg-[#1a2236] p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+                layout={leaderLayoutReady ? "position" : false}
+                layoutId={`host-leader-${p.id}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{
+                  layout: {
+                    type: "tween",
+                    duration: leaderLayoutReady ? 1 : 0,
+                    ease: [0.22, 1, 0.36, 1],
+                  },
+                  opacity: { duration: 0.18 },
+                }}
+                className={`rounded-2xl border border-gray-700/50 bg-[#1a2236] p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] ${
+                  leaderMove[p.id] === "up"
+                    ? "shadow-[0_0_0_2px_rgba(16,185,129,0.22)_inset]"
+                    : leaderMove[p.id] === "down"
+                      ? "shadow-[0_0_0_2px_rgba(248,113,113,0.22)_inset]"
+                      : ""
+                }`}
               >
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <span className="flex min-w-0 items-center gap-3">
                     <span className="flex w-8 shrink-0 items-center justify-center tabular-nums text-sm font-bold text-gray-400">
-                      {i === 0 ? <span aria-hidden>👑</span> : `${i + 1}.`}
+                      {i === 0 ? (
+                        <span aria-hidden>👑</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1">
+                          <span>{i + 1}.</span>
+                          {leaderMove[p.id] === "up" ? (
+                            <motion.span
+                              key={`up-${p.id}`}
+                              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                              transition={{ duration: 0.18 }}
+                              className="text-emerald-300"
+                              aria-label="Urcă în clasament"
+                            >
+                              ▲
+                            </motion.span>
+                          ) : leaderMove[p.id] === "down" ? (
+                            <motion.span
+                              key={`down-${p.id}`}
+                              initial={{ opacity: 0, y: -6, scale: 0.9 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 6, scale: 0.95 }}
+                              transition={{ duration: 0.18 }}
+                              className="text-red-300"
+                              aria-label="Coboară în clasament"
+                            >
+                              ▼
+                            </motion.span>
+                          ) : null}
+                        </span>
+                      )}
                     </span>
                     <span className="truncate font-semibold text-gray-100">
                       {p.display_name}

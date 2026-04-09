@@ -122,7 +122,7 @@ export default function HostPage() {
   }, [selectedQuizId]);
 
   return (
-    <div className="relative mx-auto flex min-h-dvh max-w-lg flex-col gap-8 px-6 py-10 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))] text-gray-100 lg:max-w-6xl lg:px-8">
+    <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col items-center gap-8 px-6 py-10 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))] text-gray-100 lg:px-8">
       <button
         type="button"
         onClick={handleBack}
@@ -146,9 +146,9 @@ export default function HostPage() {
         </h1>
       </header>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start">
-        <div className="flex flex-col gap-8">
-          <div className="rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
+      <div className="w-full">
+        <div className="mx-auto flex w-full max-w-md flex-col gap-8">
+          <div className="w-full rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
             <div className="mb-6 text-center">
               <h2 className="text-base font-extrabold tracking-tight text-gray-100">
                 Setări sesiune
@@ -158,7 +158,7 @@ export default function HostPage() {
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_8rem] sm:items-end">
                 <label className="flex flex-col gap-2 text-sm font-medium text-gray-100">
-                  Întrebări din Cartea
+                  Întrebări din Cartea:
                   <div className="flex gap-2">
                     <select
                       value={selectedQuizId}
@@ -180,7 +180,7 @@ export default function HostPage() {
                 </label>
 
                 <label className="flex flex-col gap-2 text-sm font-medium text-gray-100">
-                  Număr întrebări
+                  Număr întrebări:
                   <input
                     type="number"
                     inputMode="numeric"
@@ -218,12 +218,12 @@ export default function HostPage() {
               </p>
             )}
 
-              <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:justify-start">
+              <div className="mt-6 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
                 <button
                   type="button"
                   onClick={handleCreateGame}
                   disabled={loading || quizzesLoading || quizzes.length === 0}
-                  className="min-h-12 flex-1 rounded-2xl bg-[#f59e0b] px-6 font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100 sm:max-w-xs"
+                  className="min-h-12 w-full max-w-xs rounded-2xl bg-[#f59e0b] px-6 font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
                 >
                   {loading ? "Se generează…" : "Generează sesiune"}
                 </button>
@@ -237,8 +237,6 @@ export default function HostPage() {
             </div>
           </div>
         </div>
-
-        <div className="hidden lg:block" />
       </div>
     </div>
   );
