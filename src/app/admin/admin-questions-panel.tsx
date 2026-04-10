@@ -4,14 +4,22 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  addQuizQuestionAdmin,
+  createQuizAdmin,
+  deleteQuizAdmin,
   deleteQuizQuestionAdmin,
+  exportQuizQuestionsJsonAdmin,
   listQuizQuestionsAdminPage,
   listQuizzes,
+  updateQuizMetaAdmin,
   updateQuizQuestionAdmin,
   type AdminQuestionRowDto,
 } from "@/app/actions/game-actions";
 
-export function AdminQuestionsPanel() {
+export function AdminQuestionsPanel(props: {
+  quizzesRevision?: number;
+  onQuizzesMutated?: () => void;
+}) {
   const [quizzes, setQuizzes] = useState<{ id: string; title: string | null }[]>(
     [],
   );
@@ -32,21 +40,44 @@ export function AdminQuestionsPanel() {
   const [saveBusy, setSaveBusy] = useState(false);
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      setQuizzesErr(null);
-      const res = await listQuizzes();
-      if (!res.ok) {
-        setQuizzesErr(res.error);
-        return;
-      }
-      setQuizzes(res.quizzes);
-      setQuizId((prev) => {
-        if (prev && res.quizzes.some((q) => q.id === prev)) return prev;
-        return res.quizzes[0]?.id ?? "";
-      });
-    })();
+  const [titleEdit, setTitleEdit] = useState("");
+  const [newQuizTitle, setNewQuizTitle] = useState("");
+  const [metaBusy, setMetaBusy] = useState(false);
+  const [createQuizBusy, setCreateQuizBusy] = useState(false);
+  const [deleteQuizBusy, setDeleteQuizBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [metaMsg, setMetaMsg] = useState<string | null>(null);
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [addPrompt, setAddPrompt] = useState("");
+  const [addOptions, setAddOptions] = useState(["", "", "", ""]);
+  const [addCorrect, setAddCorrect] = useState(0);
+  const [addTimeLimit, setAddTimeLimit] = useState("30");
+  const [addBusy, setAddBusy] = useState(false);
+  const [addErr, setAddErr] = useState<string | null>(null);
+
+  const reloadQuizzes = useCallback(async () => {
+    setQuizzesErr(null);
+    const res = await listQuizzes();
+    if (!res.ok) {
+      setQuizzesErr(res.error);
+      return;
+    }
+    setQuizzes(res.quizzes);
+    setQuizId((prev) => {
+      if (prev && res.quizzes.some((q) => q.id === prev)) return prev;
+      return res.quizzes[0]?.id ?? "";
+    });
   }, []);
+
+  useEffect(() => {
+    void reloadQuizzes();
+  }, [reloadQuizzes, props.quizzesRevision]);
+
+  useEffect(() => {
+    const q = quizzes.find((x) => x.id === quizId);
+    setTitleEdit(q?.title?.trim() ? String(q.title) : "");
+  }, [quizzes, quizId]);
 
   const loadPage = useCallback(
     async (qid: string, p: number) => {
@@ -196,6 +227,132 @@ export function AdminQuestionsPanel() {
     setPage(1);
   };
 
+  const bumpParent = () => props.onQuizzesMutated?.();
+
+  const saveQuizTitle = async () => {
+    if (!quizId) return;
+    setMetaBusy(true);
+    setMetaMsg(null);
+    try {
+      const res = await updateQuizMetaAdmin({
+        quizId,
+        title: titleEdit,
+      });
+      if (!res.ok) {
+        setMetaMsg(res.error);
+        return;
+      }
+      await reloadQuizzes();
+      bumpParent();
+    } finally {
+      setMetaBusy(false);
+    }
+  };
+
+  const createQuiz = async () => {
+    const t = newQuizTitle.trim();
+    if (t.length < 1) return;
+    setCreateQuizBusy(true);
+    setMetaMsg(null);
+    try {
+      const res = await createQuizAdmin({ title: t });
+      if (!res.ok) {
+        setMetaMsg(res.error);
+        return;
+      }
+      setNewQuizTitle("");
+      await reloadQuizzes();
+      setQuizId(res.quizId);
+      setPage(1);
+      bumpParent();
+    } finally {
+      setCreateQuizBusy(false);
+    }
+  };
+
+  const removeQuiz = async () => {
+    if (!quizId) return;
+    if (
+      !window.confirm(
+        "Ștergi definitiv acest quiz, toate întrebările lui și toate sesiunile de joc asociate (istoric inclus)?",
+      )
+    ) {
+      return;
+    }
+    setDeleteQuizBusy(true);
+    setMetaMsg(null);
+    try {
+      const res = await deleteQuizAdmin(quizId);
+      if (!res.ok) {
+        setMetaMsg(res.error);
+        return;
+      }
+      await reloadQuizzes();
+      setPage(1);
+      bumpParent();
+    } finally {
+      setDeleteQuizBusy(false);
+    }
+  };
+
+  const exportJson = async () => {
+    if (!quizId) return;
+    setExportBusy(true);
+    setMetaMsg(null);
+    try {
+      const res = await exportQuizQuestionsJsonAdmin(quizId);
+      if (!res.ok) {
+        setMetaMsg(res.error);
+        return;
+      }
+      const blob = new Blob([res.json], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${res.fileBase}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const openAdd = () => {
+    setAddErr(null);
+    setAddPrompt("");
+    setAddOptions(["", "", "", ""]);
+    setAddCorrect(0);
+    setAddTimeLimit("30");
+    setAddOpen(true);
+  };
+
+  const submitAdd = async () => {
+    if (!quizId) return;
+    setAddBusy(true);
+    setAddErr(null);
+    const opts = addOptions.map((x) => x.trim()).filter(Boolean);
+    const timeRaw = addTimeLimit.trim();
+    const timeLimitSeconds =
+      timeRaw === "" ? null : Math.floor(Number(timeRaw));
+    try {
+      const res = await addQuizQuestionAdmin({
+        quizId,
+        prompt: addPrompt,
+        options: opts,
+        correctOptionIndex: addCorrect,
+        timeLimitSeconds,
+      });
+      if (!res.ok) {
+        setAddErr(res.error);
+        return;
+      }
+      setAddOpen(false);
+      void loadPage(quizId, page);
+    } finally {
+      setAddBusy(false);
+    }
+  };
+
   return (
     <section className="space-y-6 rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
       <h2 className="text-base font-extrabold tracking-tight text-gray-100">
@@ -205,6 +362,76 @@ export function AdminQuestionsPanel() {
         Alege un quiz, apoi editează sau șterge întrebări (câte{" "}
         {pageSize} pe pagină). Modificările folosesc cheia service din server.
       </p>
+
+      {metaMsg != null && (
+        <p className="text-sm text-amber-200/90" role="status">
+          {metaMsg}
+        </p>
+      )}
+
+      <div className="space-y-4 rounded-2xl border border-gray-700/40 bg-[#0a0f1e] p-5">
+        <p className="text-xs font-bold uppercase tracking-wider text-[#f59e0b]">
+          Gestionare quiz
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <label className="min-w-0 flex-1 text-sm text-gray-200">
+            <span className="mb-1 block text-xs text-gray-500">Titlu quiz</span>
+            <input
+              type="text"
+              value={titleEdit}
+              onChange={(e) => setTitleEdit(e.target.value)}
+              disabled={!quizId}
+              className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#1a2236] px-3 py-2 text-gray-100 shadow-inner disabled:opacity-50"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void saveQuizTitle()}
+            disabled={!quizId || metaBusy}
+            className="min-h-11 rounded-2xl border border-gray-700/50 bg-[#1a2236] px-4 text-sm font-semibold text-[#f59e0b] disabled:opacity-40"
+          >
+            {metaBusy ? "…" : "Salvează titlul"}
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void exportJson()}
+            disabled={!quizId || exportBusy}
+            className="rounded-2xl border border-gray-700/50 bg-[#1a2236] px-4 py-2 text-sm font-semibold text-gray-200 disabled:opacity-40"
+          >
+            {exportBusy ? "…" : "Export JSON"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void removeQuiz()}
+            disabled={!quizId || deleteQuizBusy}
+            className="rounded-2xl border border-red-500/35 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 disabled:opacity-40"
+          >
+            {deleteQuizBusy ? "…" : "Șterge quiz"}
+          </button>
+        </div>
+        <div className="flex flex-col gap-2 border-t border-gray-700/40 pt-4 sm:flex-row sm:items-end">
+          <label className="min-w-0 flex-1 text-sm text-gray-200">
+            <span className="mb-1 block text-xs text-gray-500">Quiz nou</span>
+            <input
+              type="text"
+              value={newQuizTitle}
+              onChange={(e) => setNewQuizTitle(e.target.value)}
+              placeholder="Titlu…"
+              className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#1a2236] px-3 py-2 text-gray-100 shadow-inner"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void createQuiz()}
+            disabled={createQuizBusy || !newQuizTitle.trim()}
+            className="min-h-11 rounded-2xl bg-[#f59e0b] px-4 text-sm font-bold text-[#0a0f1e] disabled:opacity-40"
+          >
+            {createQuizBusy ? "…" : "Creează"}
+          </button>
+        </div>
+      </div>
 
       {quizzesErr != null && (
         <p className="text-sm text-red-400">{quizzesErr}</p>
@@ -229,6 +456,15 @@ export function AdminQuestionsPanel() {
           )}
         </select>
       </label>
+
+      <button
+        type="button"
+        onClick={openAdd}
+        disabled={!quizId}
+        className="w-full min-h-12 rounded-2xl border-2 border-dashed border-[#f59e0b]/50 bg-[#0a0f1e] text-sm font-bold text-[#f59e0b] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-40"
+      >
+        + Adaugă întrebare nouă
+      </button>
 
       {listErr != null && (
         <p className="text-sm text-red-400" role="alert">
@@ -393,6 +629,96 @@ export function AdminQuestionsPanel() {
                 type="button"
                 onClick={closeEdit}
                 disabled={saveBusy}
+                className="rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-5 py-2.5 text-sm font-semibold text-gray-200"
+              >
+                Anulează
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-question-title"
+        >
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-xl">
+            <h3
+              id="add-question-title"
+              className="text-lg font-extrabold text-[#f59e0b]"
+            >
+              Întrebare nouă
+            </h3>
+            {addErr != null && (
+              <p className="mt-3 text-sm text-red-400">{addErr}</p>
+            )}
+            <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
+              Întrebare
+              <textarea
+                value={addPrompt}
+                onChange={(e) => setAddPrompt(e.target.value)}
+                rows={3}
+                className="w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
+              />
+            </label>
+            {[0, 1, 2, 3].map((i) => (
+              <label
+                key={i}
+                className="mt-3 block space-y-2 text-sm font-medium text-gray-200"
+              >
+                Variantă {i + 1}
+                <input
+                  type="text"
+                  value={addOptions[i] ?? ""}
+                  onChange={(e) => {
+                    const next = [...addOptions];
+                    next[i] = e.target.value;
+                    setAddOptions(next);
+                  }}
+                  className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
+                />
+              </label>
+            ))}
+            <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
+              Răspuns corect
+              <select
+                value={addCorrect}
+                onChange={(e) => setAddCorrect(Number(e.target.value))}
+                className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
+              >
+                {[0, 1, 2, 3].map((i) => (
+                  <option key={i} value={i}>
+                    {i + 1}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
+              Limită timp (sec.)
+              <input
+                type="number"
+                min={1}
+                value={addTimeLimit}
+                onChange={(e) => setAddTimeLimit(e.target.value)}
+                className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
+              />
+            </label>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void submitAdd()}
+                disabled={addBusy}
+                className="rounded-2xl bg-[#f59e0b] px-5 py-2.5 text-sm font-bold text-[#0a0f1e] disabled:opacity-50"
+              >
+                {addBusy ? "Se adaugă…" : "Adaugă"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddOpen(false)}
+                disabled={addBusy}
                 className="rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-5 py-2.5 text-sm font-semibold text-gray-200"
               >
                 Anulează

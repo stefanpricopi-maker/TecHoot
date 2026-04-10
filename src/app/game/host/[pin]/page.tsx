@@ -10,7 +10,7 @@ export default async function HostGamePage({ params }: PageProps) {
 
   if (normalizedPin == null) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e] p-8">
+      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e]/40 p-8 backdrop-blur-sm">
         <p className="text-gray-400">PIN invalid.</p>
       </div>
     );

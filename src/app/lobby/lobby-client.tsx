@@ -3,16 +3,21 @@
 import Link from "next/link";
 import { UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import type { RealtimeChannel } from "@supabase/supabase-js";
+
+import { pingLobbyPresence } from "@/app/actions/game-actions";
 import { createSupabaseClient } from "@/lib/supabase";
+import {
+  isLobbyPresenceFresh,
+  LOBBY_HEARTBEAT_INTERVAL_MS,
+  LOBBY_PRESENCE_TICK_MS,
+  sortLobbyPlayersAlpha,
+  upsertLobbyPlayer,
+} from "@/lib/lobby-presence";
+import { LS_PLAYER_ID_KEY } from "@/lib/player-storage";
 import type { GameSession, Player } from "@/types/game";
-
-function sortPlayersAlpha(list: Player[]) {
-  return [...list].sort((a, b) =>
-    a.display_name.localeCompare(b.display_name, "ro", { sensitivity: "base" }),
-  );
-}
 
 type LobbyClientProps = {
   normalizedPin: string | null;
@@ -29,7 +34,7 @@ export function LobbyClient({
 }: LobbyClientProps) {
   const router = useRouter();
   const redirectedRef = useRef(false);
-  const playersChannelRef = useRef<any>(null);
+  const playersChannelRef = useRef<RealtimeChannel | null>(null);
   const lobbyInstanceIdRef = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -41,14 +46,42 @@ export function LobbyClient({
     randomizeQuestions: boolean | null;
   } | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [lobbySessionId, setLobbySessionId] = useState<string | null>(null);
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setMyPlayerId(window.localStorage.getItem(LS_PLAYER_ID_KEY));
+  }, []);
+
+  useEffect(() => {
+    const t = window.setInterval(
+      () => setNowMs(Date.now()),
+      LOBBY_PRESENCE_TICK_MS,
+    );
+    return () => window.clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (!pinMatches || lobbySessionId == null) return;
+    const send = () => void pingLobbyPresence();
+    send();
+    const id = window.setInterval(send, LOBBY_HEARTBEAT_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [pinMatches, lobbySessionId]);
 
   useEffect(() => {
     if (normalizedPin == null) {
+      setLobbySessionId(null);
+      setPlayers([]);
       return;
     }
 
     const supabase = createSupabaseClient();
     let cancelled = false;
+    setLobbySessionId(null);
+    setPlayers([]);
 
     void (async () => {
       const { data } = await supabase
@@ -58,30 +91,36 @@ export function LobbyClient({
         .maybeSingle();
 
       const row = data as Pick<GameSession, "status"> | null;
-      const sessionId = (data as any)?.id as string | undefined;
+      const sessionId = (data as { id?: string })?.id as string | undefined;
       const quizTitle =
-        (data as any)?.quizzes?.title != null ? ((data as any).quizzes.title as string) : null;
+        (data as { quizzes?: { title?: string } })?.quizzes?.title != null
+          ? String((data as { quizzes?: { title?: string } }).quizzes!.title)
+          : null;
       setSessionMeta({
         quizTitle,
-        questionCount: (data as any)?.question_count ?? null,
-        randomizeQuestions: (data as any)?.randomize_questions ?? null,
+        questionCount: (data as { question_count?: number | null })
+          ?.question_count ?? null,
+        randomizeQuestions: (data as { randomize_questions?: boolean | null })
+          ?.randomize_questions ?? null,
       });
 
       if (sessionId) {
         if (cancelled) return;
+        setLobbySessionId(sessionId);
 
         const { data: plist } = await supabase
           .from("players")
-          .select("id, session_id, display_name, score, joined_at")
+          .select("id, session_id, display_name, score, joined_at, last_seen_at")
           .eq("session_id", sessionId)
           .order("display_name", { ascending: true });
-        setPlayers(sortPlayersAlpha((plist ?? []) as Player[]));
+        setPlayers(sortLobbyPlayersAlpha((plist ?? []) as Player[]));
 
         if (playersChannelRef.current) {
           void supabase.removeChannel(playersChannelRef.current);
           playersChannelRef.current = null;
         }
 
+        const baseFilter = `session_id=eq.${sessionId}`;
         const pch = supabase
           .channel(`lobby-players:${sessionId}:${lobbyInstanceIdRef.current}`)
           .on(
@@ -90,30 +129,50 @@ export function LobbyClient({
               event: "INSERT",
               schema: "public",
               table: "players",
-              filter: `session_id=eq.${sessionId}`,
+              filter: baseFilter,
             },
             (payload) => {
               const next = payload.new as Player;
-              setPlayers((prev) => {
-                if (prev.some((p) => p.id === next.id)) return prev;
-                return sortPlayersAlpha([...prev, next]);
-              });
+              setPlayers((prev) => upsertLobbyPlayer(prev, next));
+            },
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "players",
+              filter: baseFilter,
+            },
+            (payload) => {
+              const next = payload.new as Player;
+              setPlayers((prev) => upsertLobbyPlayer(prev, next));
+            },
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "DELETE",
+              schema: "public",
+              table: "players",
+              filter: baseFilter,
+            },
+            (payload) => {
+              const oldRow = payload.old as { id?: string };
+              const id = oldRow?.id;
+              if (!id) return;
+              setPlayers((prev) => prev.filter((p) => p.id !== id));
             },
           );
         playersChannelRef.current = pch;
         pch.subscribe();
       }
-      if (
-        row?.status === "question_active" &&
-        !redirectedRef.current
-      ) {
+      if (row?.status === "question_active" && !redirectedRef.current) {
         if (!pinMatches) {
           return;
         }
         redirectedRef.current = true;
-        router.replace(
-          `/game/player/${encodeURIComponent(normalizedPin)}`,
-        );
+        router.replace(`/game/player/${encodeURIComponent(normalizedPin)}`);
       }
     })();
 
@@ -128,8 +187,15 @@ export function LobbyClient({
           filter: `pin=eq.${normalizedPin}`,
         },
         (payload) => {
-          const next = payload.new as any;
-          if (typeof next?.randomize_questions === "boolean" || next?.question_count != null) {
+          const next = payload.new as {
+            randomize_questions?: boolean;
+            question_count?: number | null;
+            status?: string;
+          };
+          if (
+            typeof next?.randomize_questions === "boolean" ||
+            next?.question_count != null
+          ) {
             setSessionMeta((prev) => ({
               quizTitle: prev?.quizTitle ?? null,
               questionCount: next?.question_count ?? prev?.questionCount ?? null,
@@ -137,17 +203,12 @@ export function LobbyClient({
                 next?.randomize_questions ?? prev?.randomizeQuestions ?? null,
             }));
           }
-          if (
-            next.status === "question_active" &&
-            !redirectedRef.current
-          ) {
+          if (next.status === "question_active" && !redirectedRef.current) {
             if (!pinMatches) {
               return;
             }
             redirectedRef.current = true;
-            router.replace(
-          `/game/player/${encodeURIComponent(normalizedPin)}`,
-        );
+            router.replace(`/game/player/${encodeURIComponent(normalizedPin)}`);
           }
         },
       )
@@ -162,6 +223,16 @@ export function LobbyClient({
       }
     };
   }, [normalizedPin, pinMatches, router]);
+
+  const visiblePlayers = useMemo(() => {
+    return sortLobbyPlayersAlpha(
+      players.filter(
+        (p) =>
+          (myPlayerId != null && p.id === myPlayerId) ||
+          isLobbyPresenceFresh(p, nowMs),
+      ),
+    );
+  }, [players, myPlayerId, nowMs]);
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2rem,env(safe-area-inset-top))] text-gray-100">
@@ -231,21 +302,29 @@ export function LobbyClient({
           {normalizedPin != null && (
             <div className="mt-8 rounded-2xl border border-gray-700/50 bg-[#0a0f1e] p-6 text-left shadow-inner">
               <p className="text-xs font-bold uppercase tracking-wider text-[#f59e0b]">
-                Participanți ({players.length})
+                Prezenți în lobby ({visiblePlayers.length}
+                {players.length !== visiblePlayers.length
+                  ? ` / ${players.length}`
+                  : ""}
+                )
               </p>
               <ul className="mt-4 grid gap-3">
-                {players.length === 0 ? (
+                {visiblePlayers.length === 0 ? (
                   <li className="text-sm text-gray-400">
-                    Încă nu a intrat nimeni.
+                    Încă nu e nimeni activ aici (sau lista se actualizează).
                   </li>
                 ) : (
-                  players.map((p) => (
+                  visiblePlayers.map((p) => (
                     <li
                       key={p.id}
                       className="flex items-center gap-3 rounded-2xl border border-gray-700/40 bg-[#1a2236] px-3 py-2"
                     >
                       <UserCircle
-                        className="size-9 shrink-0 text-[#f59e0b]/75"
+                        className={`size-9 shrink-0 ${
+                          myPlayerId === p.id
+                            ? "text-gray-100"
+                            : "text-[#f59e0b]/75"
+                        }`}
                         strokeWidth={1.25}
                         aria-hidden
                       />

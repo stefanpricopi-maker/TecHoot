@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { joinSession } from "@/app/actions/game-actions";
+import { joinSession, resolveResumeRoute } from "@/app/actions/game-actions";
 import {
   LS_NICKNAME_KEY,
   LS_PIN_KEY,
@@ -14,6 +14,13 @@ export default function JoinPage() {
   const router = useRouter();
   const [pin, setPin] = useState("");
   const [nickname, setNickname] = useState("");
+  const [resume, setResume] = useState<{
+    pin: string;
+    playerId: string;
+    nickname: string;
+  } | null>(null);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeErr, setResumeErr] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -26,13 +33,54 @@ export default function JoinPage() {
     }
   }, [pin]);
 
-  const handleBack = useCallback(() => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
-      return;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedPin = window.localStorage.getItem(LS_PIN_KEY) ?? "";
+    const storedPlayerId = window.localStorage.getItem(LS_PLAYER_ID_KEY) ?? "";
+    const storedNickname = window.localStorage.getItem(LS_NICKNAME_KEY) ?? "";
+    if (storedPin && storedPlayerId && storedNickname) {
+      setResume({
+        pin: storedPin,
+        playerId: storedPlayerId,
+        nickname: storedNickname,
+      });
+    } else {
+      setResume(null);
     }
+  }, []);
+
+  const handleBack = useCallback(() => {
     router.push("/");
   }, [router]);
+
+  const clearStoredPlayer = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(LS_PLAYER_ID_KEY);
+    window.localStorage.removeItem(LS_NICKNAME_KEY);
+    window.localStorage.removeItem(LS_PIN_KEY);
+  }, []);
+
+  const handleResume = useCallback(async () => {
+    if (!resume) return;
+    setResumeErr(null);
+    setResumeBusy(true);
+    try {
+      const res = await resolveResumeRoute({
+        pin: resume.pin,
+        playerId: resume.playerId,
+        nickname: resume.nickname,
+      });
+      if (!res.ok) {
+        setResumeErr(res.error);
+        clearStoredPlayer();
+        setResume(null);
+        return;
+      }
+      router.push(res.route);
+    } finally {
+      setResumeBusy(false);
+    }
+  }, [resume, router, clearStoredPlayer]);
 
   const handleJoin = useCallback(async () => {
     setError(null);
@@ -56,14 +104,57 @@ export default function JoinPage() {
 
   return (
     <div className="relative flex min-h-dvh flex-col items-center justify-center px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2rem,env(safe-area-inset-top))] text-gray-100">
-      <button
-        type="button"
-        onClick={handleBack}
-        className="absolute left-6 top-6 min-h-11 rounded-2xl border border-gray-700/50 bg-[#1a2236] px-5 text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
-      >
-        Back
-      </button>
+      <div className="w-full max-w-md">
+        <button
+          type="button"
+          onClick={handleBack}
+          className="min-h-11 rounded-2xl border border-gray-700/50 bg-[#1a2236] px-5 text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          Înapoi
+        </button>
+      </div>
       <div className="w-full max-w-md space-y-8">
+        {resume && (
+          <div className="rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+            <p className="text-sm font-semibold text-gray-100">
+              Ești deja în jocul{" "}
+              <span className="font-mono tabular-nums tracking-widest text-[#f59e0b]">
+                {resume.pin}
+              </span>
+              .
+            </p>
+            <p className="mt-2 text-sm text-gray-400">
+              Reiei ca <span className="font-semibold text-gray-100">{resume.nickname}</span>?
+            </p>
+            {resumeErr && (
+              <p className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {resumeErr}
+              </p>
+            )}
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={handleResume}
+                disabled={resumeBusy}
+                className="min-h-12 rounded-2xl bg-[#f59e0b] px-4 text-base font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:scale-100"
+              >
+                {resumeBusy ? "Reiau…" : "Reia"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearStoredPlayer();
+                  setResume(null);
+                  setResumeErr(null);
+                }}
+                className="min-h-12 rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-4 text-base font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Joc nou
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="text-center">
           <h1 className="text-3xl font-extrabold tracking-tight text-[#f59e0b]">
             Intră în joc
@@ -97,7 +188,7 @@ export default function JoinPage() {
               type="text"
               autoComplete="nickname"
               maxLength={32}
-              placeholder="Cum te numești"
+              placeholder="ex. Marc"
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               className="min-h-12 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-4 text-base text-gray-100 shadow-inner outline-none placeholder:text-gray-500 focus:border-[#f59e0b]/50 focus:ring-2 focus:ring-[#f59e0b]/25"

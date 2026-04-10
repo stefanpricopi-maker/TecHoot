@@ -3,18 +3,18 @@
 import Link from "next/link";
 import { UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 
 import { startGame } from "@/app/actions/game-actions";
+import {
+  isLobbyPresenceFresh,
+  LOBBY_PRESENCE_TICK_MS,
+  sortLobbyPlayersAlpha,
+  upsertLobbyPlayer,
+} from "@/lib/lobby-presence";
 import { createSupabaseClient } from "@/lib/supabase";
 import type { Player } from "@/types/game";
-
-function sortPlayersAlpha(list: Player[]) {
-  return [...list].sort((a, b) =>
-    a.display_name.localeCompare(b.display_name, "ro", { sensitivity: "base" }),
-  );
-}
 
 export function HostLobbyClient(props: { pin: string; sessionId: string }) {
   const router = useRouter();
@@ -22,6 +22,9 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
   const sessionId = props.sessionId;
 
   const [players, setPlayers] = useState<Player[]>([]);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [activePlayerId, setActivePlayerId] = useState<string | null>(null);
+  const activePlayerTimeoutRef = useRef<number | null>(null);
   const [joinUrl, setJoinUrl] = useState<string>("");
   const [startLoading, setStartLoading] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -35,6 +38,14 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
   }, [pin]);
 
   useEffect(() => {
+    const t = window.setInterval(
+      () => setNowMs(Date.now()),
+      LOBBY_PRESENCE_TICK_MS,
+    );
+    return () => window.clearInterval(t);
+  }, []);
+
+  useEffect(() => {
     if (!sessionId) return;
 
     const supabase = createSupabaseClient();
@@ -42,15 +53,16 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
     void (async () => {
       const { data, error: fetchError } = await supabase
         .from("players")
-        .select("id, session_id, display_name, score, joined_at")
+        .select("id, session_id, display_name, score, joined_at, last_seen_at")
         .eq("session_id", sessionId)
         .order("display_name", { ascending: true });
 
       if (!fetchError && data) {
-        setPlayers(sortPlayersAlpha(data as Player[]));
+        setPlayers(sortLobbyPlayersAlpha(data as Player[]));
       }
     })();
 
+    const baseFilter = `session_id=eq.${sessionId}`;
     const channel = supabase
       .channel(`host-players:${sessionId}`)
       .on(
@@ -59,27 +71,76 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
           event: "INSERT",
           schema: "public",
           table: "players",
-          filter: `session_id=eq.${sessionId}`,
+          filter: baseFilter,
         },
         (payload) => {
           const row = payload.new as Player;
-          setPlayers((prev) => {
-            if (prev.some((p) => p.id === row.id)) return prev;
-            return sortPlayersAlpha([...prev, row]);
-          });
+
+          setActivePlayerId(row.id);
+          if (activePlayerTimeoutRef.current != null) {
+            window.clearTimeout(activePlayerTimeoutRef.current);
+          }
+          activePlayerTimeoutRef.current = window.setTimeout(() => {
+            setActivePlayerId(null);
+            activePlayerTimeoutRef.current = null;
+          }, 3000);
+
+          setPlayers((prev) => upsertLobbyPlayer(prev, row));
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "players",
+          filter: baseFilter,
+        },
+        (payload) => {
+          const row = payload.new as Player;
+          setPlayers((prev) => upsertLobbyPlayer(prev, row));
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "players",
+          filter: baseFilter,
+        },
+        (payload) => {
+          const oldRow = payload.old as { id?: string };
+          const id = oldRow?.id;
+          if (!id) return;
+          setPlayers((prev) => prev.filter((p) => p.id !== id));
         },
       )
       .subscribe();
 
     return () => {
+      if (activePlayerTimeoutRef.current != null) {
+        window.clearTimeout(activePlayerTimeoutRef.current);
+        activePlayerTimeoutRef.current = null;
+      }
       void supabase.removeChannel(channel);
     };
   }, [sessionId]);
 
+  const visiblePlayers = useMemo(
+    () =>
+      sortLobbyPlayersAlpha(
+        players.filter((p) => isLobbyPresenceFresh(p, nowMs)),
+      ),
+    [players, nowMs],
+  );
+
   const handleStart = useCallback(async () => {
     if (!sessionId || !pin) return;
-    if (players.length < 1) {
-      setStartError("Așteaptă măcar 1 jucător în lobby înainte să pornești jocul.");
+    if (visiblePlayers.length < 1) {
+      setStartError(
+        "Așteaptă măcar 1 jucător activ în lobby înainte să pornești jocul.",
+      );
       return;
     }
     setStartError(null);
@@ -104,7 +165,7 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
     } finally {
       setStartLoading(false);
     }
-  }, [sessionId, pin, router, players.length]);
+  }, [sessionId, pin, router, visiblePlayers.length]);
 
   const missing = !pin || !sessionId;
 
@@ -127,7 +188,7 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
           onClick={() => router.push("/host")}
           className="min-h-11 rounded-2xl border border-gray-700/50 bg-[#1a2236] px-5 text-sm font-semibold shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
-          Back
+          Înapoi
         </button>
 
         <div className="text-right" />
@@ -152,7 +213,7 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
 
               <div className="mt-8 grid place-items-center gap-4">
                 {joinUrl ? (
-                  <div className="rounded-2xl border border-gray-700/50 bg-white p-4 shadow-lg">
+                  <div className="rounded-2xl border border-gray-700/50 bg-[#f8fafc] p-4 shadow-lg">
                     <QRCodeSVG value={joinUrl} size={180} />
                   </div>
                 ) : (
@@ -177,15 +238,15 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
                 <button
                   type="button"
                   onClick={handleStart}
-                  disabled={startLoading || players.length < 1}
+                  disabled={startLoading || visiblePlayers.length < 1}
                   className="min-h-14 w-full rounded-2xl border-2 border-[#f59e0b] bg-[#0a0f1e] px-6 py-3 text-sm font-extrabold uppercase tracking-wide text-[#f59e0b] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:hover:scale-100"
                 >
                   {startLoading ? "…" : "Start"}
                 </button>
 
-                {players.length < 1 && startError == null && (
+                {visiblePlayers.length < 1 && startError == null && (
                   <p className="mt-4 text-left text-xs text-gray-400">
-                    Așteaptă măcar un participant ca să poți porni jocul.
+                    Așteaptă măcar un participant activ (cu tab deschis în lobby).
                   </p>
                 )}
 
@@ -202,26 +263,34 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
             <section className="rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
               <div className="mb-6 flex items-baseline justify-between gap-3">
                 <h2 className="text-base font-extrabold tracking-tight text-gray-100">
-                  Participanți ({players.length})
+                  Prezenți ({visiblePlayers.length}
+                  {players.length !== visiblePlayers.length
+                    ? ` / ${players.length}`
+                    : ""}
+                  )
                 </h2>
                 <p className="text-xs font-semibold uppercase tracking-wider text-[#f59e0b]">
                   live
                 </p>
               </div>
               <ul className="grid gap-4">
-                {players.length === 0 ? (
+                {visiblePlayers.length === 0 ? (
                   <li className="rounded-2xl border border-gray-700/40 bg-[#0a0f1e] px-6 py-10 text-center text-sm text-gray-400">
-                    Nu a intrat nici un jucător.
+                    Niciun jucător activ în lobby (tab deschis + heartbeat).
                   </li>
                 ) : (
-                  players.map((p) => (
+                  visiblePlayers.map((p) => (
                     <li
                       key={p.id}
                       className="flex min-h-14 items-center justify-between gap-4 rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
                     >
                       <span className="flex min-w-0 items-center gap-3">
                         <UserCircle
-                          className="size-10 shrink-0 text-[#f59e0b]/80"
+                          className={`size-10 shrink-0 ${
+                            activePlayerId === p.id
+                              ? "text-gray-100"
+                              : "text-[#f59e0b]/80"
+                          }`}
                           strokeWidth={1.25}
                           aria-hidden
                         />

@@ -12,6 +12,11 @@ export function WinnerConfetti({ active }: WinnerConfettiProps) {
   const hasFired = useRef(false);
 
   useEffect(() => {
+    // Allow re-firing on a later activation (e.g., a new game/session).
+    if (!active) {
+      hasFired.current = false;
+      return;
+    }
     if (!active || typeof window === "undefined") {
       return;
     }

@@ -123,13 +123,6 @@ export default function HostPage() {
 
   return (
     <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col items-center gap-8 px-6 py-10 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2.5rem,env(safe-area-inset-top))] text-gray-100 lg:px-8">
-      <button
-        type="button"
-        onClick={handleBack}
-        className="absolute left-6 top-6 min-h-11 rounded-2xl border border-gray-700/50 bg-[#1a2236] px-5 text-sm font-semibold shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
-      >
-        Înapoi
-      </button>
       <Link
         href="/admin"
         className="fixed right-4 top-4 z-50 grid size-12 place-items-center rounded-2xl border border-gray-700/50 bg-[#1a2236] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
@@ -140,6 +133,18 @@ export default function HostPage() {
           ⚙
         </span>
       </Link>
+
+      <div className="w-full">
+        <div className="mx-auto flex w-full max-w-md justify-start">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="min-h-11 rounded-2xl border border-gray-700/50 bg-[#1a2236] px-5 text-sm font-semibold shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+          >
+            Înapoi
+          </button>
+        </div>
+      </div>
       <header className="pt-10 text-center lg:pt-6">
         <h1 className="text-3xl font-extrabold tracking-tight text-[#f59e0b] sm:text-4xl">
           Creează joc nou

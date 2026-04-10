@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { MotionConfig, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Player } from "@/types/game";
@@ -80,21 +80,14 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
     () => podiumOrder.map((p) => p.player?.id ?? "none").join("|"),
     [podiumOrder],
   );
-  const lastSequenceKeyRef = useRef<string>("");
 
   useEffect(() => {
-    if (reduceMotion || podiumOrder.length === 0) {
-      setStartedPlaces({ 1: true, 2: true, 3: true });
-      setNameShownPlaces({ 1: true, 2: true, 3: true });
-      setConfettiActive(sorted.length > 0);
+    if (podiumOrder.length === 0) {
+      setStartedPlaces({});
+      setNameShownPlaces({});
+      setConfettiActive(false);
       return;
     }
-
-    // Avoid restarting the whole sequence on incidental re-renders.
-    if (lastSequenceKeyRef.current === sequenceKey) {
-      return;
-    }
-    lastSequenceKeyRef.current = sequenceKey;
 
     let cancelled = false;
     setStartedPlaces({});
@@ -132,31 +125,37 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
     return () => {
       cancelled = true;
     };
-  }, [podiumOrder, reduceMotion, sorted.length]);
+  }, [sequenceKey]);
 
   return (
-    <div className="min-h-dvh bg-[#0a0f1e] px-6 py-10 pb-[max(2rem,env(safe-area-inset-bottom))] text-gray-100">
-      <motion.header
-        initial={reduceMotion ? undefined : { opacity: 0, y: 20 }}
-        animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: "easeOut" }}
-        className="mx-auto max-w-2xl text-center"
-      >
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-400">
-          Clasament
-        </p>
-        <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-[#f59e0b] sm:text-3xl md:text-4xl">
-          Sesiunea{" "}
-          <span className="font-mono tabular-nums tracking-widest text-gray-100">
-            {pin}
-          </span>
-        </h1>
-        <p className="mt-3 text-sm text-gray-400">
-          {sorted.length === 0
-            ? "Niciun jucător în această sesiune."
-            : `${sorted.length} participanți`}
-        </p>
-      </motion.header>
+    <MotionConfig reducedMotion="never">
+      <div className="min-h-dvh bg-[#0a0f1e]/40 px-6 py-10 pb-[max(2rem,env(safe-area-inset-bottom))] text-gray-100 backdrop-blur-sm">
+        <motion.header
+          initial={reduceMotion ? undefined : { opacity: 0, y: 20 }}
+          animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+          className="mx-auto max-w-2xl text-center"
+        >
+          <h1 className="text-2xl font-extrabold tracking-tight text-[#f59e0b] sm:text-3xl md:text-4xl">
+            Clasament
+          </h1>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-gray-400">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em]">
+              Sesiunea{" "}
+              <span className="font-mono tabular-nums tracking-widest text-gray-100">
+                {pin}
+              </span>
+            </p>
+            <span className="opacity-60" aria-hidden>
+              |
+            </span>
+            <p className="text-sm">
+              {sorted.length === 0
+                ? "Niciun jucător în această sesiune."
+                : `${sorted.length} participanți`}
+            </p>
+          </div>
+        </motion.header>
 
       {sorted.length > 0 && (
         <>
@@ -176,7 +175,7 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
                 className="w-[28%] sm:w-[30%]"
                 barClass="bg-gradient-to-t from-zinc-600 to-zinc-400 min-h-[7rem] sm:min-h-[9rem]"
                 label="2"
-                reduceMotion={!!reduceMotion}
+                reduceMotion={false}
                 barStarted={!!startedPlaces[2]}
                 nameVisible={!!nameShownPlaces[2]}
               />
@@ -191,7 +190,7 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
               }
               barClass="bg-gradient-to-t from-amber-700 to-amber-400 min-h-[10rem] sm:min-h-[12rem] shadow-lg shadow-amber-900/40"
               label="1"
-              reduceMotion={!!reduceMotion}
+              reduceMotion={false}
               barStarted={!!startedPlaces[1]}
               nameVisible={!!nameShownPlaces[1]}
             />
@@ -202,7 +201,7 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
                 className="w-[28%] sm:w-[30%]"
                 barClass="bg-gradient-to-t from-amber-950 to-amber-800 min-h-[5.5rem] sm:min-h-[7rem]"
                 label="3"
-                reduceMotion={!!reduceMotion}
+                reduceMotion={false}
                 barStarted={!!startedPlaces[3]}
                 nameVisible={!!nameShownPlaces[3]}
               />
@@ -213,54 +212,28 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
             initial={reduceMotion ? undefined : { opacity: 0, y: 14 }}
             animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: "easeOut", delay: 0.22 }}
-            className="relative z-20 mx-auto -mt-[24px] min-h-[106px] max-w-lg overflow-hidden rounded-2xl bg-[#1a2236] p-3 sm:-mt-[32px] sm:min-h-[114px]"
+            className="relative z-20 mx-auto -mt-[24px] flex min-h-[100px] max-w-lg items-center overflow-hidden border-t-[30px] border-t-[#0a0f1e] bg-[#1a2236] p-3 sm:-mt-[32px] sm:min-h-[116px]"
           >
-            <ul className="divide-y divide-gray-700/50">
-              {rest.map((p, i) => (
-                <motion.li
-                  key={p.id}
-                  initial={reduceMotion ? undefined : { opacity: 0, x: -8 }}
-                  animate={reduceMotion ? undefined : { opacity: 1, x: 0 }}
-                  transition={{
-                    duration: 0.25,
-                    ease: "easeOut",
-                    delay: 0.24 + i * 0.03,
-                  }}
-                  className="flex items-center justify-between gap-3 px-4 py-4 text-sm"
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="w-8 tabular-nums text-gray-500">
-                      {i + 4}.
-                    </span>
-                    <span className="font-semibold text-gray-100">
-                      {p.display_name}
-                    </span>
-                  </span>
-                  <span className="tabular-nums font-extrabold text-[#f59e0b]">
-                    {p.score}
-                  </span>
-                </motion.li>
-              ))}
-            </ul>
+            <nav className="mx-auto flex w-full max-w-md flex-col gap-3 sm:flex-row sm:justify-center">
+              <Link
+                href="/"
+                className="rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-8 py-3 text-center text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Acasă
+              </Link>
+              <Link
+                href="/join"
+                className="rounded-2xl bg-[#f59e0b] px-8 py-3 text-center text-sm font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Joc nou
+              </Link>
+            </nav>
           </motion.div>
         </>
       )}
 
-      <nav className="mx-auto mt-10 flex max-w-md flex-col gap-4 sm:flex-row sm:justify-center">
-        <Link
-          href="/"
-          className="rounded-2xl border border-gray-700/50 bg-[#1a2236] px-8 py-3 text-center text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
-        >
-          Acasă
-        </Link>
-        <Link
-          href="/join"
-          className="rounded-2xl bg-[#f59e0b] px-8 py-3 text-center text-sm font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
-        >
-          Joc nou
-        </Link>
-      </nav>
-    </div>
+      </div>
+    </MotionConfig>
   );
 }
 
@@ -301,7 +274,7 @@ function PodiumBlock({
       <div
         className={`flex w-full flex-col items-center justify-end rounded-t-2xl px-2 pb-3 pt-6 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.12)] ${barClass}`}
       >
-        <span className="mb-6 text-3xl font-black text-black/25 sm:mb-8 sm:text-4xl">
+        <span className="mb-10 text-3xl font-black text-white/20 sm:mb-12 sm:text-4xl">
           {label}
         </span>
       </div>
@@ -375,7 +348,7 @@ function PodiumBlockSequenced({
         }
         className={`flex w-full flex-col items-center justify-end rounded-t-2xl px-2 pb-3 pt-6 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.12)] ${barClass}`}
       >
-        <span className="mb-6 text-3xl font-black text-black/25 sm:mb-8 sm:text-4xl">
+        <span className="mb-10 text-3xl font-black text-white/20 sm:mb-12 sm:text-4xl">
           {label}
         </span>
       </motion.div>

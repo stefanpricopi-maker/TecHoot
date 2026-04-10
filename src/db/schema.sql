@@ -88,6 +88,7 @@ create table public.players (
   display_name text not null,
   score int not null default 0,
   joined_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
   constraint players_display_name_nonempty check (char_length(trim(display_name)) > 0),
   constraint players_score_nonneg check (score >= 0)
 );

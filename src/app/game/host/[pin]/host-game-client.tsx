@@ -9,7 +9,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   proceedAfterResults,
   getHostCorrectOptionIndex,
+  getHardestQuestionAdmin,
   quitGameSession,
+  skipCurrentQuestion,
   showRoundResults,
   startCurrentQuestionTimer,
 } from "@/app/actions/game-actions";
@@ -25,6 +27,51 @@ type PlayStatus = GameSession["status"];
 type HostGameClientProps = {
   normalizedPin: string;
 };
+
+function questionTextSizeClass(text: string): string {
+  const len = text.trim().length;
+  if (len >= 240) return "text-lg sm:text-xl";
+  if (len >= 170) return "text-xl sm:text-2xl";
+  return "text-xl sm:text-2xl";
+}
+
+function AnimatedScore({
+  value,
+  durationMs = 1000,
+}: {
+  value: number;
+  durationMs?: number;
+}) {
+  const [display, setDisplay] = useState<number>(value);
+  const prevRef = useRef<number>(value);
+
+  useEffect(() => {
+    const from = prevRef.current;
+    const to = value;
+    prevRef.current = value;
+
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) {
+      setDisplay(to);
+      return;
+    }
+
+    let raf = 0;
+    const start = performance.now();
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      const eased = easeOutCubic(t);
+      setDisplay(Math.round(from + (to - from) * eased));
+      if (t < 1) raf = window.requestAnimationFrame(tick);
+    };
+
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [value, durationMs]);
+
+  return <>{display}</>;
+}
 
 export function HostGameClient({ normalizedPin }: HostGameClientProps) {
   const router = useRouter();
@@ -45,12 +92,23 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
 
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [timeUp, setTimeUp] = useState(false);
+  const isHurry =
+    status === "question_active" && timeLeft != null && Number(timeLeft) <= 5;
 
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [quitBusy, setQuitBusy] = useState(false);
+  const [skipBusy, setSkipBusy] = useState(false);
   const [questions, setQuestions] = useState<PublicQuizQuestionData[] | null>(null);
   const [correctIdx, setCorrectIdx] = useState<number | null>(null);
+  const [hardest, setHardest] = useState<{
+    questionIndex: number;
+    prompt: string;
+    correct: number;
+    wrong: number;
+    answered: number;
+    correctPct: number;
+  } | null>(null);
 
   /** Rezumat după „Afișează rezultatele” (încărcat din DB). */
   const [roundBreakdown, setRoundBreakdown] = useState<{
@@ -72,6 +130,11 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
   type LeaderTopRow = { id: string; display_name: string | null; score: number };
 
   const [showIntermission, setShowIntermission] = useState(false);
+  const [intermissionLeft, setIntermissionLeft] = useState<number | null>(null);
+  const [intermissionGo, setIntermissionGo] = useState(false);
+  const [intermissionPhase, setIntermissionPhase] = useState<
+    "idle" | "base_loaded" | "final_loaded"
+  >("idle");
 
   const [liveVotes, setLiveVotes] = useState<[number, number, number, number]>([
     0, 0, 0, 0,
@@ -153,6 +216,59 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
     [],
   );
 
+  const refreshTop10BaseBeforeLastRound = useCallback(
+    async (sid: string, prevQuestionIdx: number) => {
+      const supabase = createSupabaseClient();
+      const [playersRes, respRes] = await Promise.all([
+        supabase
+          .from("players")
+          .select("id, display_name, score, joined_at")
+          .eq("session_id", sid),
+        supabase
+          .from("round_responses")
+          .select("player_id, points_earned")
+          .eq("session_id", sid)
+          .eq("question_index", prevQuestionIdx),
+      ]);
+
+      const plist = (playersRes.data ?? []) as Array<{
+        id: string;
+        display_name: string | null;
+        score: number | null;
+        joined_at: string;
+      }>;
+      const rlist = (respRes.data ?? []) as Array<{
+        player_id: string;
+        points_earned: number | null;
+      }>;
+
+      const pointsByPlayer = new Map<string, number>();
+      for (const r of rlist) {
+        pointsByPlayer.set(r.player_id, Number(r.points_earned ?? 0));
+      }
+
+      const adjusted = plist.map((p) => {
+        const cur = Number(p.score ?? 0);
+        const delta = pointsByPlayer.get(p.id) ?? 0;
+        return {
+          id: p.id,
+          display_name: p.display_name ?? "—",
+          score: Math.max(0, cur - delta),
+          joined_at: p.joined_at,
+        };
+      });
+
+      adjusted.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+      });
+
+      setLeaderTop(adjusted.slice(0, 10).map((p) => ({ id: p.id, display_name: p.display_name, score: p.score })));
+      setIntermissionPhase("base_loaded");
+    },
+    [],
+  );
+
   const prevQuestionIdxRef = useRef<number | null>(null);
   useEffect(() => {
     if (status !== "question_active") {
@@ -161,17 +277,19 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
     // Rundă deja „live” în DB (refresh, Realtime) — fără încă o intermisie de 10s.
     if (questionStartedAt != null) {
       prevQuestionIdxRef.current = questionIndex;
-      setShowIntermission((show) => (show ? false : show));
+      setShowIntermission(false);
       return;
     }
     if (prevQuestionIdxRef.current !== questionIndex) {
       prevQuestionIdxRef.current = questionIndex;
       if (sessionId) {
-        void refreshTop10(sessionId);
+        // Phase 1: show base scores (pre last-round points), then Phase 2 updates after intro animation.
+        void refreshTop10BaseBeforeLastRound(sessionId, Math.max(0, questionIndex - 1));
       }
       setShowIntermission(true);
+      setIntermissionGo(false);
+      setIntermissionLeft(3);
       const id = window.setTimeout(() => {
-        setShowIntermission(false);
         void (async () => {
           const sid = sessionIdRef.current;
           if (!sid) return;
@@ -179,14 +297,37 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
           const res = await startCurrentQuestionTimer(sid);
           if (res.ok) {
             setQuestionStartedAt(res.startedAt);
+            setShowIntermission(false);
+            setIntermissionGo(false);
+            setIntermissionLeft(null);
+            setIntermissionPhase("idle");
           } else {
             setActionErr(res.error);
           }
         })();
-      }, 7_000);
+      }, 3_000);
       return () => window.clearTimeout(id);
     }
-  }, [status, questionIndex, sessionId, questionStartedAt, refreshTop10]);
+  }, [status, questionIndex, sessionId, questionStartedAt, refreshTop10BaseBeforeLastRound]);
+
+  useEffect(() => {
+  }, [leaderTop, status, showIntermission, questionIndex]);
+
+  useEffect(() => {
+    if (!showIntermission) {
+      setIntermissionLeft(null);
+      setIntermissionGo(false);
+      return;
+    }
+    setIntermissionLeft(3);
+    const id = window.setInterval(() => {
+      setIntermissionLeft((s) => {
+        if (s == null) return null;
+        return Math.max(0, s - 1);
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [showIntermission]);
 
   useEffect(() => {
     const prev = prevLeaderRanksRef.current;
@@ -264,6 +405,11 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
       .maybeSingle();
 
     if (error || !sess) {
+      if (error) {
+        setActionErr(
+          `${error.message} (probabil lipsește migrația pentru leaderboard breaks)`,
+        );
+      }
       return;
     }
 
@@ -306,9 +452,15 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
 
   useEffect(() => {
     if (status === "finished") {
-      router.replace(`/game/results/${encodeURIComponent(normalizedPin)}`);
+      if (!sessionId) return;
+      void (async () => {
+        const res = await getHardestQuestionAdmin(sessionId);
+        if (res.ok) {
+          setHardest(res.hardest);
+        }
+      })();
     }
-  }, [status, router, normalizedPin]);
+  }, [status, sessionId]);
 
   useEffect(() => {
     if (status !== "question_active" || question == null) {
@@ -599,18 +751,23 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
         setQuestionIndex((i) => i + 1);
         setQuestionStartedAt(null);
         setShowIntermission(true);
+        setIntermissionGo(false);
+        setIntermissionLeft(3);
         window.setTimeout(() => {
-          setShowIntermission(false);
           void (async () => {
             setActionErr(null);
             const res = await startCurrentQuestionTimer(sessionId);
             if (res.ok) {
               setQuestionStartedAt(res.startedAt);
+              setShowIntermission(false);
+              setIntermissionGo(false);
+              setIntermissionLeft(null);
+              setIntermissionPhase("idle");
             } else {
               setActionErr(res.error);
             }
           })();
-        }, 7_000);
+        }, 3_000);
       }
     } finally {
       setBusy(false);
@@ -641,10 +798,31 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
     }
   }, [sessionId, router, stopTimer]);
 
+  const handleSkip = useCallback(async () => {
+    if (!sessionId) return;
+    setSkipBusy(true);
+    setActionErr(null);
+    try {
+      const res = await skipCurrentQuestion(sessionId);
+      if (!res.ok) {
+        setActionErr(res.error);
+        return;
+      }
+      setStatus("showing_results");
+      stopTimer();
+      setTimeLeft(null);
+      setTimeUp(true);
+    } finally {
+      setSkipBusy(false);
+    }
+  }, [sessionId, stopTimer]);
+
   if (!sessionId && status === "lobby") {
     return (
       <div className="flex min-h-dvh items-center justify-center px-6 text-gray-400">
-        <p>Se încarcă sesiunea…</p>
+        <p className="text-center">
+          {actionErr ?? "Se încarcă sesiunea…"}
+        </p>
       </div>
     );
   }
@@ -674,6 +852,26 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
         <h1 className="text-3xl font-extrabold tracking-tight text-[#f59e0b]">
           Joc terminat
         </h1>
+        {hardest && (
+          <div className="w-full rounded-2xl border border-white/10 bg-[#1a2236]/55 p-6 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.10)] backdrop-blur-xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-gray-400">
+              Cea mai grea întrebare
+            </p>
+            <p className="mt-3 text-sm font-semibold text-gray-100">
+              Întrebarea {hardest.questionIndex + 1}
+            </p>
+            <p className="mt-3 whitespace-pre-wrap break-words text-lg font-extrabold leading-snug text-gray-100">
+              {hardest.prompt}
+            </p>
+            <p className="mt-4 text-sm text-gray-400">
+              <span className="font-semibold text-gray-100">
+                {hardest.correctPct}% corecte
+              </span>{" "}
+              · {hardest.correct} corecte · {hardest.wrong} greșite ·{" "}
+              {hardest.answered} răspunsuri
+            </p>
+          </div>
+        )}
         <Link
           href={`/game/results/${encodeURIComponent(normalizedPin)}`}
           className="min-h-12 rounded-2xl bg-[#f59e0b] px-8 py-3 font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
@@ -716,140 +914,28 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
           </button>
         </div>
         <header className="mb-8 text-left">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
-            Rezultate rundă
-          </p>
-          <p className="mt-2 text-xs text-gray-400">
-            Întrebarea {questionIndex + 1} din {quizLen}
-            {isLastRound ? " · ultima întrebare" : ""}
-          </p>
-          <AnimatePresence mode="wait">
-            <motion.h1
-              key={`sr-q-${questionIndex}-${question.id}`}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.25 }}
-              className="mt-4 text-xl font-extrabold leading-snug tracking-tight text-gray-100 sm:text-2xl"
-            >
-              {question.text}
-            </motion.h1>
-          </AnimatePresence>
+          <div />
         </header>
-
-        {typeof idx === "number" && idx >= 0 && idx < question.options.length ? (
-          <section className="mb-8 w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] sm:p-8">
-            <p className="text-xs font-bold uppercase tracking-wide text-emerald-300/90">
-              Răspuns corect
-            </p>
-            <p className="mt-3 text-lg font-extrabold text-gray-100">
-              {idx + 1}. {question.options[idx]}
-            </p>
-          </section>
-        ) : (
-          <p className="mb-8 text-center text-sm text-gray-400">
-            Se încarcă răspunsul corect…
-          </p>
-        )}
-
-        <div className="mb-8 flex w-full flex-col items-center gap-3">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={handleProceed}
-            className="min-h-14 w-full max-w-sm rounded-2xl bg-[#f59e0b] px-8 font-extrabold uppercase tracking-wide text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 sm:w-auto"
-          >
-            {busy
-              ? "…"
-              : isLastRound
-                ? "Încheie jocul"
-                : "Următoarea întrebare"}
-          </button>
-          {isLastRound && (
-            <p className="max-w-sm text-center text-xs text-gray-400">
-              După apăsare, sesiunea se închide și participanții văd
-              ecranul final.
-            </p>
-          )}
-        </div>
-
-        <section className="mb-8 w-full rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
-          <div className="mb-6 flex items-baseline justify-between gap-3">
-            <p className="text-sm font-extrabold text-gray-100">
-              Clasament (Top 10)
-            </p>
-            <p className="pr-1 text-xs font-semibold uppercase tracking-wider text-[#f59e0b]">
-              intermediar
-            </p>
-          </div>
-
-          {leaderTop.length === 0 ? (
-            <p className="text-sm text-gray-400">
-              Se încarcă clasamentul…
-            </p>
-          ) : (
-            <ul className="space-y-4">
-              {leaderTop.map((p, i) => (
-                <li
-                  key={p.id}
-                  className="rounded-2xl border border-gray-700/40 bg-[#0a0f1e] p-4"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className="flex w-8 shrink-0 items-center justify-center tabular-nums text-sm font-bold text-gray-400">
-                        {i === 0 ? <span aria-hidden>👑</span> : `${i + 1}.`}
-                      </span>
-                      <span className="truncate font-semibold text-gray-100">
-                        {p.display_name}
-                      </span>
-                    </span>
-                    <span className="font-mono text-sm font-extrabold tabular-nums text-[#f59e0b]">
-                      {p.score}
-                    </span>
-                  </div>
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#1a2236]">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: `${Math.max(6, Math.round((p.score / maxScore) * 100))}%`,
-                      }}
-                      transition={{ type: "spring", stiffness: 260, damping: 28 }}
-                      className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
 
         {roundBreakdown != null && (
           <div className="mb-8 w-full space-y-4 rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
-            <p className="text-center text-sm font-medium text-gray-100">
-              <span className="tabular-nums font-extrabold text-[#f59e0b]">{roundBreakdown.answered}</span> din{" "}
-              <span className="tabular-nums">{roundBreakdown.playersTotal}</span>{" "}
-              participanți au răspuns
+            <p className="text-left text-sm font-semibold text-gray-300">
+              Întrebarea {questionIndex + 1} din {quizLen}
+              {isLastRound ? " · ultima întrebare" : ""}
             </p>
-            <p className="text-center text-sm text-gray-400">
-              <span className="font-semibold text-emerald-400">
-                {roundBreakdown.correct}
-              </span>{" "}
-              corecte ·{" "}
-              <span className="font-semibold text-red-400">
-                {roundBreakdown.answered - roundBreakdown.correct}
-              </span>{" "}
-              greșite
-              {roundBreakdown.playersTotal > roundBreakdown.answered ? (
-                <>
-                  {" "}
-                  ·{" "}
-                  <span className="font-semibold text-gray-300">
-                    {roundBreakdown.playersTotal - roundBreakdown.answered}
-                  </span>{" "}
-                  fără răspuns
-                </>
-              ) : null}
-            </p>
+            <AnimatePresence mode="wait">
+              <motion.h1
+                key={`sr-q-${questionIndex}-${question.id}`}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.25 }}
+                className="text-left text-xl font-extrabold leading-snug tracking-tight text-gray-100 sm:text-2xl"
+              >
+                {question.text}
+              </motion.h1>
+            </AnimatePresence>
+
             <ul className="mt-4 space-y-3 border-t border-gray-700/50 pt-6 text-sm">
               {question.options.map((opt, i) => (
                 <li
@@ -870,6 +956,45 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
                 </li>
               ))}
             </ul>
+
+            <div className="flex flex-col items-center justify-center gap-1 text-center sm:flex-row sm:gap-6">
+              <p className="text-sm font-medium text-gray-100">
+                <span className="tabular-nums font-extrabold text-[#f59e0b]">
+                  {roundBreakdown.answered}
+                </span>{" "}
+                din <span className="tabular-nums">{roundBreakdown.playersTotal}</span>{" "}
+                participanți au răspuns
+              </p>
+              <p className="text-sm text-gray-400">
+                <span className="font-semibold text-emerald-400">
+                  {roundBreakdown.correct}
+                </span>{" "}
+                corecte ·{" "}
+                <span className="font-semibold text-red-400">
+                  {roundBreakdown.answered - roundBreakdown.correct}
+                </span>{" "}
+                greșite <span className="opacity-70">·</span>{" "}
+                <span className="font-semibold text-gray-200">
+                  {roundBreakdown.answered > 0
+                    ? Math.round(
+                        (roundBreakdown.correct / roundBreakdown.answered) * 100,
+                      )
+                    : 0}
+                  %
+                </span>{" "}
+                corecte
+                {roundBreakdown.playersTotal > roundBreakdown.answered ? (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <span className="font-semibold text-gray-300">
+                      {roundBreakdown.playersTotal - roundBreakdown.answered}
+                    </span>{" "}
+                    fără răspuns
+                  </>
+                ) : null}
+              </p>
+            </div>
           </div>
         )}
 
@@ -884,11 +1009,32 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
             {actionErr}
           </p>
         )}
+
+        <div className="mb-8 flex w-full flex-col items-center gap-3">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={handleProceed}
+            className="min-h-14 w-full max-w-sm rounded-2xl bg-[#f59e0b] px-8 font-extrabold uppercase tracking-wide text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 sm:w-auto"
+          >
+            {busy
+              ? "…"
+              : isLastRound
+                ? "Încheie jocul"
+                : "Clasament"}
+          </button>
+          {isLastRound && (
+            <p className="max-w-sm text-center text-xs text-gray-400">
+              După apăsare, sesiunea se închide și participanții văd
+              ecranul final.
+            </p>
+          )}
+        </div>
       </div>
     );
   }
 
-  if (status === "question_active" && question == null) {
+  if (status === "question_active" && questionStartedAt != null && question == null) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-6 text-gray-400">
         <p>Întrebare indisponibilă.</p>
@@ -896,10 +1042,12 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
     );
   }
 
-  if (status === "question_active" && showIntermission && sessionId) {
+  // While the next question's timer hasn't started yet, always show the
+  // intermission screen (prevents brief UI flicker during state transitions).
+  if (status === "question_active" && sessionId && questionStartedAt == null) {
     const maxScore = Math.max(1, ...leaderTop.map((p) => p.score));
     return (
-      <div className="flex min-h-dvh flex-col bg-[#0a0f1e] px-6 py-6 text-gray-100">
+      <div className="flex min-h-dvh flex-col bg-[#0a0f1e]/40 px-6 py-6 text-gray-100 backdrop-blur-sm">
         <div className="shrink-0 pb-4">
           <button
             type="button"
@@ -916,14 +1064,27 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
+            onAnimationComplete={() => {
+              if (
+                intermissionPhase === "base_loaded" &&
+                sessionId &&
+                status === "question_active" &&
+                questionStartedAt == null
+              ) {
+                void refreshTop10(sessionId);
+                setIntermissionPhase("final_loaded");
+              }
+            }}
             className="mb-8 text-center"
           >
             <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-[#f59e0b] sm:text-3xl">
-              Pregătește-te…
+              Fii gata în{" "}
+              {intermissionLeft != null ? (
+                <span className="tabular-nums">{intermissionLeft}</span>
+              ) : null}{" "}
+              secunde
             </h2>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.22em] text-gray-400">
-              Clasament
-            </p>
+            {null}
           </motion.div>
 
           <motion.ul layout={leaderLayoutReady} className="space-y-4">
@@ -942,7 +1103,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
                   },
                   opacity: { duration: 0.18 },
                 }}
-                className={`rounded-2xl border border-gray-700/50 bg-[#1a2236] p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] ${
+                className={`flex min-h-16 items-center rounded-2xl border border-gray-700/50 bg-[#1a2236] p-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] ${
                   leaderMove[p.id] === "up"
                     ? "shadow-[0_0_0_2px_rgba(16,185,129,0.22)_inset]"
                     : leaderMove[p.id] === "down"
@@ -950,9 +1111,9 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
                       : ""
                 }`}
               >
-                <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex w-full items-center justify-between gap-3 text-base sm:text-lg">
                   <span className="flex min-w-0 items-center gap-3">
-                    <span className="flex w-8 shrink-0 items-center justify-center tabular-nums text-sm font-bold text-gray-400">
+                    <span className="flex w-10 shrink-0 items-center justify-center tabular-nums text-base font-extrabold text-gray-300 sm:text-lg">
                       {i === 0 ? (
                         <span aria-hidden>👑</span>
                       ) : (
@@ -986,26 +1147,13 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
                         </span>
                       )}
                     </span>
-                    <span className="truncate font-semibold text-gray-100">
+                    <span className="truncate font-extrabold tracking-tight text-gray-100">
                       {p.display_name}
                     </span>
                   </span>
-                  <span className="font-mono text-sm font-extrabold tabular-nums text-[#f59e0b]">
-                    {p.score}
+                  <span className="font-mono text-base font-extrabold tabular-nums text-[#f59e0b] sm:text-lg">
+                    <AnimatedScore value={p.score} durationMs={1000} />
                   </span>
-                </div>
-                <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#0a0f1e]">
-                  <motion.div
-                    layout
-                    animate={{
-                      width: `${Math.max(
-                        8,
-                        Math.round((p.score / maxScore) * 100),
-                      )}%`,
-                    }}
-                    transition={{ type: "spring", stiffness: 260, damping: 28 }}
-                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
-                  />
                 </div>
               </motion.li>
             ))}
@@ -1019,7 +1167,11 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
   return (
     <div
       onPointerDown={audio.unlocked ? undefined : audio.unlock}
-      className="mx-auto min-h-dvh w-full max-w-3xl px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] text-gray-100"
+      className={`mx-auto min-h-dvh w-full max-w-3xl px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] text-gray-100 lg:max-w-6xl lg:px-8 ${
+        isHurry
+          ? "relative before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:bg-[radial-gradient(ellipse_at_center,_rgba(239,68,68,0.20)_0%,_rgba(10,15,30,0)_62%)] before:animate-pulse"
+          : ""
+      }`}
     >
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
@@ -1031,6 +1183,16 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
           >
             {quitBusy ? "…" : "Termină jocul!"}
           </button>
+          {status === "question_active" && (
+            <button
+              type="button"
+              onClick={handleSkip}
+              disabled={skipBusy || !sessionId}
+              className="rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-45"
+            >
+              {skipBusy ? "…" : "Skip"}
+            </button>
+          )}
         </div>
         <button
           type="button"
@@ -1052,118 +1214,136 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
           exit={{ opacity: 0, y: -12 }}
           transition={{ duration: 0.25 }}
         >
-          <article className="rounded-2xl border border-gray-700/50 bg-[#1a2236] p-8 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-10">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-sm font-semibold text-gray-400">
-                Întrebarea {questionIndex + 1} / {quizLen}
-              </p>
-              <span className="rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-4 py-2 font-mono text-sm font-extrabold tabular-nums text-[#f59e0b] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
-                {timeLeft != null ? timeLeft : "—"}s
-              </span>
-            </div>
-            <h1 className="mt-4 text-left text-xl font-extrabold leading-snug tracking-tight text-gray-100 sm:text-2xl">
-              {question!.text}
-            </h1>
-            <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {question!.options.map((opt, i) => {
-                const tone =
-                  i === 0
-                    ? "bg-red-500 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.22)]"
-                    : i === 1
-                      ? "bg-blue-600 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.2)]"
-                      : i === 2
-                        ? "bg-amber-400 text-zinc-900 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.35)]"
-                        : "bg-emerald-600 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.18)]";
-                return (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, delay: i * 0.05 }}
-                    className={`relative overflow-hidden rounded-2xl p-5 ${tone}`}
-                  >
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <span className="text-xs font-black uppercase tracking-wider opacity-90">
-                        &nbsp;
-                      </span>
-                      <span className="rounded-full bg-black/15 px-3 py-1 font-mono text-sm font-black tabular-nums">
-                        {i + 1}
-                      </span>
-                    </div>
-                    <p className="text-sm font-bold leading-snug opacity-95">
-                      {opt}
-                    </p>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </article>
-
-          <footer className="mt-8 flex flex-col gap-6">
-            <p className="text-center text-base font-medium text-gray-100">
-              <span className="font-extrabold text-[#f59e0b]">{responseCount}</span>{" "}
-              din {playersCount} participanți au răspuns
-            </p>
-            {actionErr != null && (
-              <p className="text-center text-sm text-red-400">
-                {actionErr}
-              </p>
-            )}
-            <button
-              type="button"
-              disabled={!canShowResults || busy}
-              onClick={handleShowResults}
-              className="min-h-14 rounded-2xl bg-[#f59e0b] px-8 font-extrabold uppercase tracking-wide text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
-            >
-              {busy ? "…" : "Afișează rezultatele"}
-            </button>
-          </footer>
-
-          <section className="mt-8 rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8">
-            <div className="mb-6 flex items-baseline justify-between gap-3">
-              <p className="text-sm font-extrabold text-gray-100">
-                Voturi live
-              </p>
-              <p className="text-xs font-semibold text-[#f59e0b]">
-                {responseCount}/{playersCount}
-              </p>
-            </div>
-            <div className="grid grid-cols-4 gap-4">
-              {OPTION_TONES.map((t, i) => {
-                const max = Math.max(1, ...liveVotes);
-                const pct = Math.round((liveVotes[i]! / max) * 100);
-                const shouldPulse = timeUp && correctIdx === i;
-                return (
-                  <div key={t.label} className="flex flex-col items-center gap-2">
-                    <div className="grid h-28 w-full place-items-end overflow-hidden rounded-2xl border border-gray-700/40 bg-[#0a0f1e] p-2 shadow-inner">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+            <div className="min-w-0">
+              <article className="rounded-2xl border border-white/12 bg-[#1a2236]/35 p-6 shadow-[0_30px_90px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.14)] backdrop-blur-2xl sm:p-8">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-sm font-semibold text-gray-400">
+                    Întrebarea {questionIndex + 1} / {quizLen}
+                  </p>
+                  <span className="rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-4 py-2 font-mono text-sm font-extrabold tabular-nums text-[#f59e0b] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                    {timeLeft != null ? timeLeft : "—"}s
+                  </span>
+                </div>
+                <h1
+                  className={`mt-4 text-left font-extrabold leading-snug tracking-tight text-gray-100 ${questionTextSizeClass(
+                    question!.text,
+                  )}`}
+                >
+                  {question!.text}
+                </h1>
+                <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {question!.options.map((opt, i) => {
+                    const tone =
+                      i === 0
+                        ? "bg-red-500 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.22)]"
+                        : i === 1
+                          ? "bg-blue-600 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.2)]"
+                          : i === 2
+                            ? "bg-amber-400 text-zinc-900 shadow-[inset_0_2px_0_0_rgba(255,255,255,0.35)]"
+                            : "bg-emerald-600 text-white shadow-[inset_0_2px_0_0_rgba(255,255,255,0.18)]";
+                    return (
                       <motion.div
-                        initial={{ height: 0 }}
-                        animate={{ height: `${Math.max(6, pct)}%` }}
-                        transition={{ type: "spring", stiffness: 260, damping: 28 }}
-                        className={`w-full rounded-xl bg-gradient-to-t ${t.bar} ${
-                          shouldPulse ? "shadow-[0_0_0_2px_rgba(245,158,11,0.5)_inset]" : ""
-                        }`}
+                        key={i}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25, delay: i * 0.05 }}
+                        className={`relative overflow-hidden rounded-2xl p-5 ${tone}`}
                       >
-                        {shouldPulse ? (
-                          <motion.div
-                            aria-hidden
-                            initial={{ opacity: 0.35 }}
-                            animate={{ opacity: [0.35, 0.9, 0.35] }}
-                            transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}
-                            className="h-full w-full rounded-xl"
-                          />
-                        ) : null}
+                        <div className="flex items-center justify-between gap-4">
+                          <p className="min-w-0 flex-1 text-base font-extrabold leading-snug opacity-95 sm:text-lg">
+                            {opt}
+                          </p>
+                          <span className="shrink-0 rounded-full bg-black/15 px-3 py-1 font-mono text-sm font-black tabular-nums">
+                            {i + 1}
+                          </span>
+                        </div>
                       </motion.div>
-                    </div>
-                    <div className="text-center text-xs text-gray-400">
-                      <div className="font-semibold text-gray-300">{t.label}</div>
-                      <div className="font-mono tabular-nums text-[#f59e0b]">{liveVotes[i]}</div>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              </article>
+
+              <footer className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-center sm:text-left">
+                  <p className="text-base font-medium text-gray-100">
+                    <span className="font-extrabold text-[#f59e0b]">{responseCount}</span>{" "}
+                    din {playersCount} participanți au răspuns
+                  </p>
+                  {actionErr != null && (
+                    <p className="mt-2 text-sm text-red-400">{actionErr}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={!canShowResults || busy}
+                  onClick={handleShowResults}
+                  className="min-h-14 w-full max-w-[19.5rem] self-center rounded-2xl bg-[#f59e0b] px-8 font-extrabold uppercase tracking-wide text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100 sm:w-auto"
+                >
+                  {busy ? "…" : "Afișează rezultatele"}
+                </button>
+              </footer>
             </div>
-          </section>
+
+            <section className="rounded-2xl border border-gray-700/50 bg-[#1a2236] p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-8 lg:sticky lg:top-6">
+              <div className="mb-6 flex items-baseline justify-between gap-3">
+                <p className="text-sm font-extrabold text-gray-100">Voturi live</p>
+                <p className="text-xs font-semibold text-[#f59e0b]">
+                  {responseCount}/{playersCount}
+                </p>
+              </div>
+              <div className="grid gap-3">
+                {OPTION_TONES.map((t, i) => {
+                  const max = Math.max(1, ...liveVotes);
+                  const pct = Math.round((liveVotes[i]! / max) * 100);
+                  const shouldPulse = timeUp && correctIdx === i;
+                  return (
+                    <div
+                      key={t.label}
+                      className="flex items-center gap-4 rounded-2xl border border-gray-700/40 bg-[#0a0f1e] px-4 py-3 shadow-inner"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <p className="truncate text-sm font-semibold text-gray-100">
+                            {t.label}
+                          </p>
+                          <p className="shrink-0 font-mono text-sm font-extrabold tabular-nums text-[#f59e0b]">
+                            {liveVotes[i]}
+                          </p>
+                        </div>
+                        <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-[#1a2236]">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.max(6, pct)}%` }}
+                            transition={{ type: "spring", stiffness: 260, damping: 28 }}
+                            className={`h-full rounded-full bg-gradient-to-r ${t.bar} ${
+                              shouldPulse
+                                ? "shadow-[0_0_0_2px_rgba(245,158,11,0.5)_inset]"
+                                : ""
+                            }`}
+                          >
+                            {shouldPulse ? (
+                              <motion.div
+                                aria-hidden
+                                initial={{ opacity: 0.35 }}
+                                animate={{ opacity: [0.35, 0.9, 0.35] }}
+                                transition={{
+                                  duration: 0.9,
+                                  repeat: Infinity,
+                                  ease: "easeInOut",
+                                }}
+                                className="h-full w-full"
+                              />
+                            ) : null}
+                          </motion.div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
         </motion.div>
       </AnimatePresence>
     </div>

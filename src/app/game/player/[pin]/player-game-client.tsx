@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { animate } from "framer-motion/dom";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import { submitAnswer } from "@/app/actions/game-actions";
 import type { PublicQuizQuestionData } from "@/lib/quiz-db";
@@ -42,9 +43,54 @@ export const KAHOOT_CELLS = [
   },
 ] as const;
 
+function questionTextSizeClass(text: string): string {
+  const len = text.trim().length;
+  if (len >= 240) return "text-lg sm:text-xl";
+  if (len >= 170) return "text-xl sm:text-2xl";
+  return "text-xl sm:text-2xl";
+}
+
 type PlayerGameClientProps = {
   normalizedPin: string;
 };
+
+function AnimatedScore({
+  value,
+  durationMs = 1000,
+}: {
+  value: number;
+  durationMs?: number;
+}) {
+  const [display, setDisplay] = useState<number>(value);
+  const prevRef = useRef<number>(value);
+
+  useEffect(() => {
+    const from = prevRef.current;
+    const to = value;
+    prevRef.current = value;
+
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) {
+      setDisplay(to);
+      return;
+    }
+
+    let raf = 0;
+    const start = performance.now();
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      const eased = easeOutCubic(t);
+      setDisplay(Math.round(from + (to - from) * eased));
+      if (t < 1) raf = window.requestAnimationFrame(tick);
+    };
+
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [value, durationMs]);
+
+  return <>{display}</>;
+}
 
 export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   const router = useRouter();
@@ -59,6 +105,11 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   const [roundOutcome, setRoundOutcome] = useState<
     "loading" | "correct" | "wrong" | "none"
   >("loading");
+  const reduceTapMotion = useReducedMotion();
+  const isHurry =
+    status === "question_active" &&
+    timeLeftSeconds != null &&
+    Number(timeLeftSeconds) <= 5;
   const [pointsEarned, setPointsEarned] = useState<number | null>(null);
   const [questions, setQuestions] = useState<PublicQuizQuestionData[] | null>(null);
   const [sessionQuestionLimit, setSessionQuestionLimit] = useState<number | null>(
@@ -73,11 +124,15 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   const [leaderTop, setLeaderTop] = useState<
     { id: string; display_name: string; score: number }[]
   >([]);
+  const [intermissionPhase, setIntermissionPhase] = useState<
+    "idle" | "base_loaded" | "final_loaded"
+  >("idle");
   const prevLeaderRanksRef = useRef<Record<string, number>>({});
   const [leaderMove, setLeaderMove] = useState<
     Record<string, "up" | "down" | "same" | "new">
   >({});
   const [leaderLayoutReady, setLeaderLayoutReady] = useState(false);
+  const [intermissionLeft, setIntermissionLeft] = useState<number | null>(null);
 
   type LeaderTopRow = { id: string; display_name: string | null; score: number };
 
@@ -190,6 +245,59 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
     [],
   );
 
+  const refreshTop5BaseBeforeLastRound = useCallback(
+    async (sid: string, prevQuestionIdx: number) => {
+      const supabase = createSupabaseClient();
+      const [playersRes, respRes] = await Promise.all([
+        supabase
+          .from("players")
+          .select("id, display_name, score, joined_at")
+          .eq("session_id", sid),
+        supabase
+          .from("round_responses")
+          .select("player_id, points_earned")
+          .eq("session_id", sid)
+          .eq("question_index", prevQuestionIdx),
+      ]);
+
+      const plist = (playersRes.data ?? []) as Array<{
+        id: string;
+        display_name: string | null;
+        score: number | null;
+        joined_at: string;
+      }>;
+      const rlist = (respRes.data ?? []) as Array<{
+        player_id: string;
+        points_earned: number | null;
+      }>;
+
+      const pointsByPlayer = new Map<string, number>();
+      for (const r of rlist) {
+        pointsByPlayer.set(r.player_id, Number(r.points_earned ?? 0));
+      }
+
+      const adjusted = plist.map((p) => {
+        const cur = Number(p.score ?? 0);
+        const delta = pointsByPlayer.get(p.id) ?? 0;
+        return {
+          id: p.id,
+          display_name: p.display_name ?? "—",
+          score: Math.max(0, cur - delta),
+          joined_at: p.joined_at,
+        };
+      });
+
+      adjusted.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+      });
+
+      setLeaderTop(adjusted.slice(0, 5).map((p) => ({ id: p.id, display_name: p.display_name, score: p.score })));
+      setIntermissionPhase("base_loaded");
+    },
+    [],
+  );
+
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
@@ -215,6 +323,32 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
       leaderTop.map((p, i) => [p.id, i]),
     );
   }, [leaderTop]);
+
+  useEffect(() => {
+    const isIntermission =
+      status === "question_active" && questionStartedAt == null && !!sessionId;
+    if (!isIntermission) {
+      setIntermissionLeft(null);
+      setIntermissionPhase("idle");
+      return;
+    }
+    setIntermissionLeft(3);
+    const id = window.setInterval(() => {
+      setIntermissionLeft((s) => {
+        if (s == null) return null;
+        return Math.max(0, s - 1);
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [status, questionStartedAt, sessionId]);
+
+  // When intermission starts, show base scores first.
+  useEffect(() => {
+    const isIntermission =
+      status === "question_active" && questionStartedAt == null && !!sessionId;
+    if (!isIntermission || !sessionId) return;
+    void refreshTop5BaseBeforeLastRound(sessionId, Math.max(0, questionIndex - 1));
+  }, [status, questionStartedAt, sessionId, questionIndex, refreshTop5BaseBeforeLastRound]);
 
   useEffect(() => {
     if (leaderTop.length === 0) {
@@ -520,7 +654,7 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
               transition={{ type: "spring", stiffness: 320, damping: 26 }}
               className="flex flex-col items-center gap-4"
             >
-              <div className="grid size-24 place-items-center rounded-full bg-white/15 shadow-[0_0_0_1px_rgba(255,255,255,0.18)_inset]">
+              <div className="grid size-24 place-items-center rounded-full bg-white/10 shadow-[0_0_0_1px_rgba(245,158,11,0.22)_inset]">
                 <span className="text-5xl font-black leading-none" aria-hidden>
                   {icon}
                 </span>
@@ -561,20 +695,33 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   if (status === "question_active" && questionStartedAt == null && sessionId) {
     const maxScore = Math.max(1, ...leaderTop.map((p) => p.score));
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e] px-6 py-10 text-gray-100">
+      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e]/40 px-6 py-10 text-gray-100 backdrop-blur-sm">
         <div className="w-full max-w-lg">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
+            onAnimationComplete={() => {
+              if (
+                intermissionPhase === "base_loaded" &&
+                sessionId &&
+                status === "question_active" &&
+                questionStartedAt == null
+              ) {
+                void refreshTop5(sessionId);
+                setIntermissionPhase("final_loaded");
+              }
+            }}
             className="mb-8 text-center"
           >
             <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-[#f59e0b] sm:text-3xl">
-              Pregătește-te…
+              Fii gata în{" "}
+              {intermissionLeft != null ? (
+                <span className="tabular-nums">{intermissionLeft}</span>
+              ) : null}{" "}
+              secunde
             </h2>
-            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.22em] text-gray-400">
-              Clasament
-            </p>
+            {null}
           </motion.div>
 
           <motion.ul layout={leaderLayoutReady} className="space-y-4">
@@ -642,21 +789,8 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
                     </span>
                   </span>
                   <span className="font-mono text-sm font-extrabold tabular-nums text-[#f59e0b]">
-                    {p.score}
+                    <AnimatedScore value={p.score} durationMs={1000} />
                   </span>
-                </div>
-                <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#0a0f1e]">
-                  <motion.div
-                    layout
-                    animate={{
-                      width: `${Math.max(
-                        8,
-                        Math.round((p.score / maxScore) * 100),
-                      )}%`,
-                    }}
-                    transition={{ type: "spring", stiffness: 260, damping: 28 }}
-                    className="h-full rounded-full bg-gradient-to-r from-blue-500 to-blue-600"
-                  />
                 </div>
               </motion.li>
             ))}
@@ -672,7 +806,11 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   return (
     <div
       onPointerDown={audio.unlocked ? undefined : audio.unlock}
-      className="min-h-dvh bg-[#0a0f1e] p-6 sm:p-8"
+      className={`min-h-dvh bg-[#0a0f1e]/40 p-6 backdrop-blur-sm sm:p-8 ${
+        isHurry
+          ? "relative before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(ellipse_at_center,_rgba(239,68,68,0.22)_0%,_rgba(10,15,30,0)_62%)] before:animate-pulse"
+          : ""
+      }`}
     >
       <AnimatePresence mode="wait">
         <motion.div
@@ -681,13 +819,17 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
           transition={{ duration: 0.25 }}
-          className="mx-auto mb-6 flex max-w-lg items-start justify-between gap-4 sm:mb-8 sm:max-w-xl"
+          className="mx-auto mb-6 max-w-lg rounded-2xl border border-white/12 bg-[#1a2236]/35 p-6 shadow-[0_30px_90px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.14)] backdrop-blur-2xl sm:mb-8 sm:max-w-xl sm:p-8"
         >
           <div className="flex-1">
             <p className="text-left text-sm font-semibold text-gray-400">
               Întrebarea {questionIndex + 1} / {effectiveLen || "—"}
             </p>
-            <p className="mt-3 whitespace-pre-wrap break-words text-xl font-extrabold leading-snug tracking-tight text-gray-100 sm:text-2xl">
+            <p
+              className={`mt-3 whitespace-pre-wrap break-words font-extrabold leading-snug tracking-tight text-gray-100 ${questionTextSizeClass(
+                currentQ?.text ?? "",
+              )}`}
+            >
               {currentQ?.text ?? "Întrebare…"}
             </p>
           </div>
@@ -725,14 +867,32 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
                     : cell.label
                 }
                 aria-pressed={isChosen}
-                onClick={() => pick(i)}
+                onTap={(e) => {
+                  if (disabled) return;
+                  const el = e.currentTarget;
+                  if (
+                    !reduceTapMotion &&
+                    el instanceof HTMLButtonElement
+                  ) {
+                    void animate(
+                      el,
+                      { scale: [1, 1.13, 1], y: [0, -6, 0] },
+                      {
+                        type: "spring",
+                        stiffness: 520,
+                        damping: 17,
+                        mass: 0.55,
+                      },
+                    );
+                  }
+                  pick(i);
+                }}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, delay: 0.04 + i * 0.05 }}
                 whileHover={
                   disabled ? undefined : { scale: 1.02 }
                 }
-                whileTap={disabled ? undefined : { scale: 0.98 }}
                 className={`flex min-h-[9.5rem] flex-col items-center justify-center gap-2 rounded-2xl px-3 py-4 text-5xl shadow-none transition-[box-shadow,opacity] disabled:hover:scale-100 sm:min-h-[11rem] sm:gap-2.5 sm:text-6xl ${cell.className} ${
                   isChosen
                     ? "box-border border-4 border-white"

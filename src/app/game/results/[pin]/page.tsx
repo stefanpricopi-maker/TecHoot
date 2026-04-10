@@ -15,7 +15,7 @@ export default async function GameResultsPage({ params }: PageProps) {
 
   if (pin == null) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e] p-8 text-gray-100">
+      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e]/40 p-8 text-gray-100 backdrop-blur-sm">
         <p className="text-gray-400">PIN invalid.</p>
       </div>
     );
@@ -31,7 +31,7 @@ export default async function GameResultsPage({ params }: PageProps) {
 
   if (sessionErr || !session) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e] p-8 text-gray-100">
+      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e]/40 p-8 text-gray-100 backdrop-blur-sm">
         <p className="text-gray-400">Nu există sesiune cu acest PIN.</p>
       </div>
     );
@@ -47,7 +47,7 @@ export default async function GameResultsPage({ params }: PageProps) {
 
   if (playersErr) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e] p-8 text-gray-100">
+      <div className="flex min-h-dvh items-center justify-center bg-[#0a0f1e]/40 p-8 text-gray-100 backdrop-blur-sm">
         <p className="max-w-md text-center text-red-400">
           Nu s-a putut încărca clasamentul. Verifică conexiunea și RLS pentru
           `players`.

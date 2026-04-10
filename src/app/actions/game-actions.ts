@@ -26,6 +26,14 @@ export type JoinSessionResult =
   | { ok: true; playerId: string; pin: string; nickname: string }
   | { ok: false; error: string };
 
+export type ResumeSessionRouteResult =
+  | { ok: true; route: string }
+  | { ok: false; error: string };
+
+export type PingLobbyPresenceResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
 export type AdvanceQuestionResult =
   | { ok: true; finished: boolean }
   | { ok: false; error: string };
@@ -36,6 +44,20 @@ export type ShowRoundResultsResult =
 
 export type SubmitAnswerResult =
   | { ok: true }
+  | { ok: false; error: string };
+
+export type HardestQuestionAdminResult =
+  | {
+      ok: true;
+      hardest: {
+        questionIndex: number;
+        prompt: string;
+        correct: number;
+        wrong: number;
+        answered: number;
+        correctPct: number;
+      } | null;
+    }
   | { ok: false; error: string };
 
 export type ListQuizzesResult =
@@ -278,6 +300,609 @@ export async function deleteQuizQuestionAdmin(
     return { ok: false, error: error.message };
   }
   return { ok: true };
+}
+
+export type ImportQuizQuestionItemInput = {
+  prompt: string;
+  options: string[];
+  correctOptionIndex: number;
+};
+
+export type ImportQuizQuestionsBatchAdminResult =
+  | {
+      ok: true;
+      imported: number;
+      skippedDuplicates: number;
+      errors: { rowIndex: number; message: string }[];
+    }
+  | { ok: false; error: string };
+
+function normalizeImportQuestionItem(
+  raw: ImportQuizQuestionItemInput,
+):
+  | { ok: true; prompt: string; options: string[]; correctOptionIndex: number }
+  | { ok: false; message: string } {
+  const prompt = String(raw.prompt ?? "").trim();
+  if (!prompt) {
+    return { ok: false, message: "Textul întrebării lipsește sau e gol." };
+  }
+  const opts = (raw.options ?? []).map((o) => String(o).trim()).filter(Boolean);
+  if (opts.length < 2 || opts.length > 4) {
+    return {
+      ok: false,
+      message: "Sunt necesare între 2 și 4 variante de răspuns (ne-goale).",
+    };
+  }
+  const idx = Number(raw.correctOptionIndex);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= opts.length) {
+    return { ok: false, message: "Indexul răspunsului corect nu e valid." };
+  }
+  return { ok: true, prompt, options: opts, correctOptionIndex: Math.floor(idx) };
+}
+
+/**
+ * Inserare batch întrebări (Admin UI / import). Service role.
+ * Rândurile invalide sunt raportate în `errors`; cele valide se inserează.
+ */
+export async function importQuizQuestionsBatchAdmin(input: {
+  quizId: string;
+  items: ImportQuizQuestionItemInput[];
+  defaultTimeLimitSeconds?: number | null;
+  skipDuplicates?: boolean;
+}): Promise<ImportQuizQuestionsBatchAdminResult> {
+  const quizId = input.quizId.trim();
+  if (!isUuid(quizId)) {
+    return { ok: false, error: "ID quiz invalid." };
+  }
+  const items = input.items ?? [];
+  if (items.length === 0) {
+    return { ok: false, error: "Nu ai trimis nici o întrebare." };
+  }
+  if (items.length > 500) {
+    return { ok: false, error: "Maxim 500 întrebări per import." };
+  }
+
+  const defaultT =
+    input.defaultTimeLimitSeconds == null
+      ? 30
+      : Math.floor(Number(input.defaultTimeLimitSeconds));
+  if (!Number.isFinite(defaultT) || defaultT <= 0) {
+    return { ok: false, error: "Limita de timp implicită trebuie să fie > 0." };
+  }
+
+  const supabase = createSupabaseAdminClient();
+
+  const { data: quizRow, error: qErr } = await supabase
+    .from("quizzes")
+    .select("id")
+    .eq("id", quizId)
+    .maybeSingle();
+  if (qErr) {
+    return { ok: false, error: qErr.message };
+  }
+  if (!quizRow?.id) {
+    return { ok: false, error: "Quiz-ul nu există." };
+  }
+
+  const { data: maxRow, error: mErr } = await supabase
+    .from("questions")
+    .select("order_index")
+    .eq("quiz_id", quizId)
+    .order("order_index", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (mErr) {
+    return { ok: false, error: mErr.message };
+  }
+  let nextOrder =
+    maxRow?.order_index == null
+      ? 0
+      : Math.floor(Number(maxRow.order_index)) + 1;
+
+  const existingPrompts = new Set<string>();
+  if (input.skipDuplicates) {
+    const { data: promptsData, error: pErr } = await supabase
+      .from("questions")
+      .select("prompt")
+      .eq("quiz_id", quizId);
+    if (pErr) {
+      return { ok: false, error: pErr.message };
+    }
+    for (const r of promptsData ?? []) {
+      existingPrompts.add(String((r as { prompt?: string }).prompt ?? "").trim());
+    }
+  }
+
+  const errors: { rowIndex: number; message: string }[] = [];
+  let skippedDuplicates = 0;
+  const rows: {
+    quiz_id: string;
+    prompt: string;
+    options: string[];
+    correct_option_index: number;
+    order_index: number;
+    time_limit_seconds: number;
+  }[] = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const norm = normalizeImportQuestionItem(items[i]!);
+    if (!norm.ok) {
+      errors.push({ rowIndex: i, message: norm.message });
+      continue;
+    }
+    if (
+      input.skipDuplicates &&
+      existingPrompts.has(norm.prompt)
+    ) {
+      skippedDuplicates += 1;
+      continue;
+    }
+    if (input.skipDuplicates) {
+      existingPrompts.add(norm.prompt);
+    }
+    rows.push({
+      quiz_id: quizId,
+      prompt: norm.prompt,
+      options: norm.options,
+      correct_option_index: norm.correctOptionIndex,
+      order_index: nextOrder,
+      time_limit_seconds: defaultT,
+    });
+    nextOrder += 1;
+  }
+
+  if (rows.length === 0) {
+    return {
+      ok: true,
+      imported: 0,
+      skippedDuplicates,
+      errors,
+    };
+  }
+
+  const { error: insErr } = await supabase.from("questions").insert(rows);
+  if (insErr) {
+    return { ok: false, error: insErr.message };
+  }
+
+  return {
+    ok: true,
+    imported: rows.length,
+    skippedDuplicates,
+    errors,
+  };
+}
+
+// --- Admin: întreținere, quiz-uri, sesiuni ---------------------------------
+
+export type AdminMaintenanceStatsResult =
+  | {
+      ok: true;
+      quizCount: number;
+      questionCount: number;
+      sessionCount: number;
+      activeSessionCount: number;
+      serviceRoleConfigured: boolean;
+      adminToolsSecretConfigured: boolean;
+    }
+  | { ok: false; error: string };
+
+export async function getAdminMaintenanceStats(): Promise<AdminMaintenanceStatsResult> {
+  try {
+    const supabase = createSupabaseAdminClient();
+    const [{ count: qc }, { count: pq }, { count: sc }, { count: ac }] =
+      await Promise.all([
+        supabase.from("quizzes").select("*", { count: "exact", head: true }),
+        supabase.from("questions").select("*", { count: "exact", head: true }),
+        supabase.from("sessions").select("*", { count: "exact", head: true }),
+        supabase
+          .from("sessions")
+          .select("*", { count: "exact", head: true })
+          .neq("status", "finished"),
+      ]);
+    return {
+      ok: true,
+      quizCount: qc ?? 0,
+      questionCount: pq ?? 0,
+      sessionCount: sc ?? 0,
+      activeSessionCount: ac ?? 0,
+      serviceRoleConfigured: Boolean(
+        process.env.SUPABASE_SERVICE_ROLE_KEY?.trim(),
+      ),
+      adminToolsSecretConfigured: Boolean(
+        process.env.ADMIN_TOOLS_SECRET?.trim(),
+      ),
+    };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message ? e.message : "Eroare la statistici.";
+    return { ok: false, error: msg };
+  }
+}
+
+export type RunAdminCleanupResult =
+  | { ok: true; deletedSessions: number }
+  | { ok: false; error: string };
+
+/** Apelează `public.cleanup_old_data` (service role). `olderThanDays` default 2. */
+export async function runAdminCleanupOldData(
+  olderThanDays: number = 2,
+): Promise<RunAdminCleanupResult> {
+  const d = Math.floor(Number(olderThanDays));
+  if (!Number.isFinite(d) || d < 1 || d > 365) {
+    return { ok: false, error: "Interval invalid (1–365 zile)." };
+  }
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data, error } = await supabase.rpc("cleanup_old_data", {
+      p_older_than: `${d} days`,
+    });
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    const n = Number((row as { deleted_sessions?: number })?.deleted_sessions ?? 0);
+    return { ok: true, deletedSessions: Number.isFinite(n) ? n : 0 };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message ? e.message : "Eroare la cleanup.";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function createQuizAdmin(input: {
+  title: string;
+  description?: string | null;
+}): Promise<{ ok: true; quizId: string } | { ok: false; error: string }> {
+  const title = String(input.title ?? "").trim();
+  if (title.length < 1 || title.length > 200) {
+    return { ok: false, error: "Titlul trebuie să aibă 1–200 caractere." };
+  }
+  const desc =
+    input.description == null
+      ? null
+      : String(input.description).trim().slice(0, 2000) || null;
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data, error } = await supabase
+      .from("quizzes")
+      .insert({ title, description: desc })
+      .select("id")
+      .single();
+    if (error || !data?.id) {
+      return { ok: false, error: error?.message ?? "Nu s-a putut crea quiz-ul." };
+    }
+    return { ok: true, quizId: data.id as string };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message ? e.message : "Eroare la creare quiz.";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function updateQuizMetaAdmin(input: {
+  quizId: string;
+  title: string;
+  description?: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const quizId = input.quizId.trim();
+  if (!isUuid(quizId)) {
+    return { ok: false, error: "ID quiz invalid." };
+  }
+  const title = String(input.title ?? "").trim();
+  if (title.length < 1 || title.length > 200) {
+    return { ok: false, error: "Titlul trebuie să aibă 1–200 caractere." };
+  }
+  const desc =
+    input.description === undefined
+      ? undefined
+      : input.description == null
+        ? null
+        : String(input.description).trim().slice(0, 2000) || null;
+  try {
+    const supabase = createSupabaseAdminClient();
+    const patch: Record<string, unknown> = {
+      title,
+      updated_at: new Date().toISOString(),
+    };
+    if (desc !== undefined) {
+      patch.description = desc;
+    }
+    const { error } = await supabase.from("quizzes").update(patch).eq("id", quizId);
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message ? e.message : "Eroare la actualizare.";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function deleteQuizAdmin(
+  quizIdRaw: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const quizId = quizIdRaw.trim();
+  if (!isUuid(quizId)) {
+    return { ok: false, error: "ID quiz invalid." };
+  }
+  try {
+    const supabase = createSupabaseAdminClient();
+    // `sessions.quiz_id` → ON DELETE RESTRICT blochează ștergerea quiz-ului dacă există sesiuni.
+    // Ștergem mai întâi sesiunile (players / round_responses dispar prin ON DELETE CASCADE pe session).
+    const { error: sessionsErr } = await supabase
+      .from("sessions")
+      .delete()
+      .eq("quiz_id", quizId);
+    if (sessionsErr) {
+      return { ok: false, error: sessionsErr.message };
+    }
+    const { data: deletedRows, error } = await supabase
+      .from("quizzes")
+      .delete()
+      .eq("id", quizId)
+      .select("id");
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+    if (!deletedRows?.length) {
+      return {
+        ok: false,
+        error:
+          "Nu s-a șters niciun quiz (ID inexistent sau lipsă permisiuni). Verifică Supabase și cheia service role.",
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message ? e.message : "Eroare la ștergere quiz.";
+    return { ok: false, error: msg };
+  }
+}
+
+export type ExportQuizJsonResult =
+  | { ok: true; json: string; fileBase: string }
+  | { ok: false; error: string };
+
+/** Export în forma exod.json: [{ question, options, correct }]. */
+export async function exportQuizQuestionsJsonAdmin(
+  quizIdRaw: string,
+): Promise<ExportQuizJsonResult> {
+  const quizId = quizIdRaw.trim();
+  if (!isUuid(quizId)) {
+    return { ok: false, error: "ID quiz invalid." };
+  }
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data: quiz, error: qe } = await supabase
+      .from("quizzes")
+      .select("title")
+      .eq("id", quizId)
+      .maybeSingle();
+    if (qe) {
+      return { ok: false, error: qe.message };
+    }
+    if (!quiz) {
+      return { ok: false, error: "Quiz inexistent." };
+    }
+    const { data: rows, error } = await supabase
+      .from("questions")
+      .select("prompt, options, correct_option_index")
+      .eq("quiz_id", quizId)
+      .order("order_index", { ascending: true })
+      .order("id", { ascending: true });
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+    const payload = (rows ?? []).map((r) => {
+      const raw = r.options as unknown;
+      const options = Array.isArray(raw)
+        ? (raw as unknown[]).filter((x): x is string => typeof x === "string")
+        : [];
+      return {
+        question: String(r.prompt ?? ""),
+        options,
+        correct: Number(r.correct_option_index ?? 0),
+      };
+    });
+    const title = String((quiz as { title?: string }).title ?? "quiz")
+      .replace(/[^\w\d\-]+/g, "_")
+      .slice(0, 40);
+    return {
+      ok: true,
+      json: `${JSON.stringify(payload, null, 2)}\n`,
+      fileBase: title || "quiz",
+    };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message ? e.message : "Eroare la export.";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function addQuizQuestionAdmin(input: {
+  quizId: string;
+  prompt: string;
+  options: string[];
+  correctOptionIndex: number;
+  timeLimitSeconds?: number | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const norm = normalizeImportQuestionItem({
+    prompt: input.prompt,
+    options: input.options,
+    correctOptionIndex: input.correctOptionIndex,
+  });
+  if (!norm.ok) {
+    return { ok: false, error: norm.message };
+  }
+  const quizId = input.quizId.trim();
+  if (!isUuid(quizId)) {
+    return { ok: false, error: "ID quiz invalid." };
+  }
+  let timeLimit = 30;
+  if (input.timeLimitSeconds != null) {
+    const t = Math.floor(Number(input.timeLimitSeconds));
+    if (!Number.isFinite(t) || t <= 0) {
+      return { ok: false, error: "Limită timp invalidă." };
+    }
+    timeLimit = t;
+  }
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data: qrow, error: qe } = await supabase
+      .from("quizzes")
+      .select("id")
+      .eq("id", quizId)
+      .maybeSingle();
+    if (qe || !qrow) {
+      return { ok: false, error: qe?.message ?? "Quiz inexistent." };
+    }
+    const { data: maxRow, error: me } = await supabase
+      .from("questions")
+      .select("order_index")
+      .eq("quiz_id", quizId)
+      .order("order_index", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (me) {
+      return { ok: false, error: me.message };
+    }
+    const nextOrder =
+      maxRow?.order_index == null
+        ? 0
+        : Math.floor(Number(maxRow.order_index)) + 1;
+    const { error: ie } = await supabase.from("questions").insert({
+      quiz_id: quizId,
+      prompt: norm.prompt,
+      options: norm.options,
+      correct_option_index: norm.correctOptionIndex,
+      order_index: nextOrder,
+      time_limit_seconds: timeLimit,
+    });
+    if (ie) {
+      return { ok: false, error: ie.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message ? e.message : "Eroare la adăugare.";
+    return { ok: false, error: msg };
+  }
+}
+
+export type AdminSessionRowDto = {
+  id: string;
+  pin: string;
+  status: string;
+  quiz_id: string;
+  quiz_title: string | null;
+  created_at: string;
+  started_at: string | null;
+  ended_at: string | null;
+};
+
+export type ListSessionsAdminPageResult =
+  | {
+      ok: true;
+      sessions: AdminSessionRowDto[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }
+  | { ok: false; error: string };
+
+const ADMIN_SESSIONS_PAGE_SIZE = 25;
+
+export async function listSessionsAdminPage(
+  page: number,
+): Promise<ListSessionsAdminPageResult> {
+  try {
+    const supabase = createSupabaseAdminClient();
+    const safePage = Math.max(1, Math.floor(Number.isFinite(page) ? page : 1));
+    const pageSize = ADMIN_SESSIONS_PAGE_SIZE;
+    const from = (safePage - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { count, error: cErr } = await supabase
+      .from("sessions")
+      .select("*", { count: "exact", head: true });
+    if (cErr) {
+      return { ok: false, error: cErr.message };
+    }
+    const total = count ?? 0;
+
+    const { data, error } = await supabase
+      .from("sessions")
+      .select("id, pin, status, quiz_id, created_at, started_at, ended_at")
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+
+    const rows = data ?? [];
+    const quizIds = [...new Set(rows.map((r: { quiz_id?: string }) => String(r.quiz_id ?? "")).filter(Boolean))];
+    const titleByQuiz = new Map<string, string | null>();
+    if (quizIds.length > 0) {
+      const { data: quizzes } = await supabase
+        .from("quizzes")
+        .select("id, title")
+        .in("id", quizIds);
+      for (const q of quizzes ?? []) {
+        titleByQuiz.set(String((q as { id?: string }).id), (q as { title?: string | null }).title ?? null);
+      }
+    }
+
+    const sessions: AdminSessionRowDto[] = rows.map((row: Record<string, unknown>) => {
+      const qid = String(row.quiz_id ?? "");
+      return {
+        id: row.id as string,
+        pin: String(row.pin ?? ""),
+        status: String(row.status ?? ""),
+        quiz_id: qid,
+        quiz_title: titleByQuiz.get(qid) ?? null,
+        created_at: String(row.created_at ?? ""),
+        started_at: row.started_at == null ? null : String(row.started_at),
+        ended_at: row.ended_at == null ? null : String(row.ended_at),
+      };
+    });
+
+    return { ok: true, sessions, total, page: safePage, pageSize };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message ? e.message : "Eroare la listare sesiuni.";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function forceFinishSessionAdmin(
+  sessionIdRaw: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sessionId = sessionIdRaw.trim();
+  if (!isUuid(sessionId)) {
+    return { ok: false, error: "ID sesiune invalid." };
+  }
+  try {
+    const supabase = createSupabaseAdminClient();
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from("sessions")
+      .update({
+        status: "finished",
+        ended_at: now,
+      })
+      .eq("id", sessionId);
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message ? e.message : "Eroare la închidere sesiune.";
+    return { ok: false, error: msg };
+  }
 }
 
 const MAX_PIN_ATTEMPTS = 25;
@@ -552,6 +1177,123 @@ export async function joinSession(
   return { ok: true, playerId, pin, nickname };
 }
 
+export async function resolveResumeRoute(input: {
+  pin: string;
+  playerId: string;
+  nickname: string;
+}): Promise<ResumeSessionRouteResult> {
+  const pin = normalizeJoinPin(input.pin);
+  const playerId = String(input.playerId ?? "").trim();
+  const nickname = String(input.nickname ?? "").trim();
+
+  if (!pin) {
+    return { ok: false, error: "PIN invalid." };
+  }
+  if (!isUuid(playerId)) {
+    return { ok: false, error: "Player invalid." };
+  }
+  if (nickname.length < NICKNAME_MIN || nickname.length > NICKNAME_MAX) {
+    return { ok: false, error: "Nickname invalid." };
+  }
+
+  // Use service role to avoid RLS-related false negatives, but require both
+  // playerId and nickname to match to prevent easy hijacking.
+  const supabase = createSupabaseAdminClient();
+
+  const { data: sess, error: sessErr } = await supabase
+    .from("sessions")
+    .select("id, status, ended_at, expires_at, pin")
+    .eq("pin", pin)
+    .maybeSingle();
+
+  if (sessErr) return { ok: false, error: sessErr.message };
+  if (!sess?.id) return { ok: false, error: "Nu există o sesiune cu acest PIN." };
+
+  const sessionId = sess.id as string;
+
+  const { data: playerRow, error: pErr } = await supabase
+    .from("players")
+    .select("id, session_id, display_name")
+    .eq("id", playerId)
+    .maybeSingle();
+
+  if (pErr) return { ok: false, error: pErr.message };
+  if (!playerRow?.id) return { ok: false, error: "Nu te-am găsit în sesiune." };
+  if (String(playerRow.session_id) !== sessionId) {
+    return { ok: false, error: "Nu te-am găsit în sesiunea acestui PIN." };
+  }
+  if (String(playerRow.display_name ?? "") !== nickname) {
+    return { ok: false, error: "Nickname diferit (nu putem reconecta automat)." };
+  }
+
+  const status = String((sess as any).status ?? "");
+  if (status === "lobby") {
+    return { ok: true, route: `/lobby/${encodeURIComponent(pin)}` };
+  }
+  if (status === "finished") {
+    return { ok: true, route: `/game/results/${encodeURIComponent(pin)}` };
+  }
+  // question_active / showing_results
+  return { ok: true, route: `/game/player/${encodeURIComponent(pin)}` };
+}
+
+/** Heartbeat lobby: actualizează `last_seen_at` (cookie jucător + PIN sesiune). */
+export async function pingLobbyPresence(): Promise<PingLobbyPresenceResult> {
+  try {
+    const cookieStore = await cookies();
+    const playerId = cookieStore.get(PLAYER_ID_COOKIE)?.value?.trim() ?? "";
+    if (!isUuid(playerId)) {
+      return { ok: false, error: "Nu ești autentificat ca jucător." };
+    }
+    const pin = normalizeJoinPin(
+      cookieStore.get(PLAYER_SESSION_PIN_COOKIE)?.value ?? "",
+    );
+    if (!pin) {
+      return { ok: false, error: "PIN lipsă." };
+    }
+
+    const supabase = createSupabaseAdminClient();
+
+    const { data: sess, error: sessErr } = await supabase
+      .from("sessions")
+      .select("id, status")
+      .eq("pin", pin)
+      .maybeSingle();
+
+    if (sessErr) return { ok: false, error: sessErr.message };
+    if (!sess?.id) return { ok: false, error: "Sesiune inexistentă." };
+
+    if (String(sess.status) !== "lobby") {
+      return { ok: true };
+    }
+
+    const sessionId = sess.id as string;
+
+    const { data: playerRow, error: pErr } = await supabase
+      .from("players")
+      .select("id, session_id")
+      .eq("id", playerId)
+      .maybeSingle();
+
+    if (pErr) return { ok: false, error: pErr.message };
+    if (!playerRow?.id || String(playerRow.session_id) !== sessionId) {
+      return { ok: false, error: "Player invalid pentru această sesiune." };
+    }
+
+    const { error: upErr } = await supabase
+      .from("players")
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq("id", playerId);
+
+    if (upErr) return { ok: false, error: upErr.message };
+    return { ok: true };
+  } catch (e) {
+    const msg =
+      e instanceof Error && e.message ? e.message : "Eroare la ping lobby.";
+    return { ok: false, error: msg };
+  }
+}
+
 /**
  * START: `lobby` → `question_active`, `current_question_index` = 0.
  * În DB statusul nu este literal „question”, ci **`question_active`** (enum).
@@ -699,6 +1441,110 @@ export async function showRoundResults(
   return { ok: true };
 }
 
+/** Admin remote: sare peste întrebarea curentă (forțează rezultatele). */
+export async function skipCurrentQuestion(
+  sessionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireAdminForSession(sessionId);
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const supabase = createSupabaseAdminClient();
+
+  const { data: sess, error: readErr } = await supabase
+    .from("sessions")
+    .select("id, status")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (readErr) return { ok: false, error: readErr.message };
+  if (!sess?.id) return { ok: false, error: "Sesiunea nu există." };
+
+  const st = String((sess as any).status ?? "");
+  if (st === "showing_results") return { ok: true };
+  if (st !== "question_active") {
+    return { ok: false, error: "Poți da Skip doar în timpul întrebării." };
+  }
+
+  const { error: upErr } = await supabase
+    .from("sessions")
+    .update({ status: "showing_results" })
+    .eq("id", sessionId)
+    .eq("status", "question_active");
+  if (upErr) return { ok: false, error: upErr.message };
+  return { ok: true };
+}
+
+export async function getHardestQuestionAdmin(
+  sessionId: string,
+): Promise<HardestQuestionAdminResult> {
+  const auth = await requireAdminForSession(sessionId);
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const supabase = createSupabaseAdminClient();
+
+  const { data: sess, error: sErr } = await supabase
+    .from("sessions")
+    .select("id, quiz_id, pin, question_count, question_seed, randomize_questions")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (sErr) return { ok: false, error: sErr.message };
+  if (!sess?.quiz_id) return { ok: false, error: "Sesiune fără quiz." };
+
+  const { questions: ordered, limit, seed } = await fetchSessionQuestions(
+    supabase,
+    sessionId,
+  );
+  const randomize = (sess.randomize_questions as boolean | null | undefined) ?? true;
+  const shuffled = randomize ? seededShuffle(ordered, seed) : ordered;
+  const effectiveLen = Math.min(limit, shuffled.length);
+
+  const { data: rows, error: rErr } = await supabase
+    .from("round_responses")
+    .select("question_index, selected_option_index")
+    .eq("session_id", sessionId);
+  if (rErr) return { ok: false, error: rErr.message };
+
+  const totals = new Map<number, { answered: number; correct: number }>();
+  for (const r of rows ?? []) {
+    const qIdx = Number((r as any).question_index ?? -1);
+    const sel = Number((r as any).selected_option_index ?? -1);
+    if (!Number.isFinite(qIdx) || qIdx < 0 || qIdx >= effectiveLen) continue;
+    const q = shuffled[qIdx];
+    if (!q) continue;
+    const correctIdx = Number((q as any).correct_option_index ?? -1);
+    const entry = totals.get(qIdx) ?? { answered: 0, correct: 0 };
+    entry.answered += 1;
+    if (sel === correctIdx) entry.correct += 1;
+    totals.set(qIdx, entry);
+  }
+
+  let hardest: Extract<
+    HardestQuestionAdminResult,
+    { ok: true }
+  >["hardest"] = null;
+  for (const [qIdx, stat] of totals.entries()) {
+    if (stat.answered <= 0) continue;
+    const pct = Math.round((stat.correct / stat.answered) * 100);
+    const wrong = stat.answered - stat.correct;
+    const q = shuffled[qIdx];
+    const prompt = String((q as any)?.prompt ?? "");
+    if (!prompt) continue;
+    if (
+      hardest == null ||
+      pct < hardest.correctPct ||
+      (pct === hardest.correctPct && wrong > hardest.wrong)
+    ) {
+      hardest = {
+        questionIndex: qIdx,
+        prompt,
+        correct: stat.correct,
+        wrong,
+        answered: stat.answered,
+        correctPct: pct,
+      };
+    }
+  }
+
+  return { ok: true, hardest };
+}
+
 /**
  * După rezultate: următoarea întrebare sau final.
  * `showing_results` → `question_active` (index+1) sau `finished`.
@@ -734,6 +1580,7 @@ export async function proceedAfterResults(
   }
 
   const idx = session.current_question_index as number;
+  const nextIdx = idx + 1;
 
   if (idx >= len - 1) {
     const { error: finErr } = await supabase
@@ -755,9 +1602,10 @@ export async function proceedAfterResults(
     .from("sessions")
     .update({
       status: "question_active",
-      current_question_index: idx + 1,
-      // Timer will be started explicitly by host after intermission.
+      current_question_index: nextIdx,
+      // Timer will be started after countdown / break.
       current_question_started_at: null,
+      leaderboard_break_until: null,
     })
     .eq("id", sessionId)
     .eq("status", "showing_results");

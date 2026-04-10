@@ -54,6 +54,8 @@ export interface Player {
   display_name: string;
   score: number;
   joined_at: string;
+  /** Ultimul ping din lobby (client); folosit pentru a ascunde tab-uri închise. */
+  last_seen_at?: string | null;
 }
 
 /** Pachet util pentru UI: sesiune + întrebarea curentă (după join). */

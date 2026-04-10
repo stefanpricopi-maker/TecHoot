@@ -1,613 +1,612 @@
 [
-    {
-      "question": "În ce împrejurare a fost dată o poruncă prin care fiecare băiat mic să fie aruncat în râu?",
-      "options": ["Când s-a născut Isus", "Când Israel era în Egipt", "Când s-a născut Moise", "Când s-a născut Iosif"],
-      "correct": 2
-    },
-    {
-      "question": "Cine a murit în timpul ultimei urgii în Egipt?",
-      "options": ["Întâiul născut al lui Faraon", "Întâiul născut al celui închis în temniță", "Toți întâii-născuți ai dobitoacelor", "Toți soldații lui Faraon"],
-      "correct": 2
-    },
-    {
-      "question": "Florile cărei plante sunt reprezentate pe sfeșnicul din cortul întâlnirii?",
-      "options": ["migdal", "măslin", "smochin", "finic"],
-      "correct": 0
-    },
-    {
-      "question": "Cartea Exodului ne spune că, după darea Legii pe Sinai, Dumnezeu le-a permis unor oameni să-L vadă. Cine au fost aceștia?",
-      "options": ["Moise și Aaron", "Nadab și Abihu", "70 de bătrâni ai lui Israel", "Tot poporul Israel"],
-      "correct": 2
-    },
-    {
-      "question": "Tabla de aur cu inscripția: Sfânt (sfințenie) Domnului, pe care trebuiau s-o poarte preoții, trebuia pusă:",
-      "options": ["Pe pieptarul judecății", "Pe mantie", "Pe mitră", "Pe toiagul lui Aaron"],
-      "correct": 2
-    },
-    {
-      "question": "Ce pedeapsă trebuia aplicată celor care se atingeau de munte, la darea Legii?",
-      "options": ["Să fie scoși din tabără șapte zile", "Să fie uciși cu pietre", "Să fie străpunși cu săgeți", "Să plătească un siclu de argint"],
-      "correct": 1
-    },
-    {
-      "question": "Ce poruncă a dat Faraon, cu privire la evrei, după prima întâlnire cu Moise și Aaron?",
-      "options": ["Să se mărească numărul de cărămizi", "Să nu se mai dea paie pentru cărămizi", "Numărul de cărămizi să rămână același", "Să fie alungați din Egipt pe loc"],
-      "correct": 1
-    },
-    {
-      "question": "Cum s-a prezentat Dumnezeu lui Moise?",
-      "options": ["“Dumnezeul lui Avraam, Isaac și Iacov”", "“Iehova”", "“Eu sunt”", "“Dumnezeul cel Atotputernic”"],
-      "correct": 0
-    },
-    {
-      "question": "Din ce era făcută învelitoarea exterioară a cortului?",
-      "options": ["piei de capră", "piei de berbeci", "piei de vițel de mare", "in subțire răsucit"],
-      "correct": 2
-    },
-    {
-      "question": "Cum se numea omul din poporul Israel în care Dumnezeu a pus un duh de înțelepciune pentru a lucra la facerea cortului?",
-      "options": ["Bețaleel", "Dan", "Hur", "Iosua"],
-      "correct": 0
-    },
-    {
-      "question": "Ce trebuia să facă un rob pentru a putea lua parte la Paștele evreilor?",
-      "options": ["Să aibă cetățenie în Israel", "Să fie tăiat împrejur", "Să dea zecuială din tot ce are", "Să spele picioarele preoților"],
-      "correct": 1
-    },
-    {
-      "question": "Cine a spus: Cunosc acum că Domnul este mai mare decât toți dumnezeii?",
-      "options": ["Faraon", "Ietro", "Naaman", "Moise"],
-      "correct": 1
-    },
-    {
-      "question": "Asir, Elcana și Abiasaf sunt ...",
-      "options": ["fiii lui Ieroboam", "fiii lui Core", "fiii lui Amon", "fiii lui Iuda"],
-      "correct": 1
-    },
-    {
-      "question": "Unde s-a întâlnit Moise, când s-a întors în Egipt, cu Aaron?",
-      "options": ["La muntele lui Dumnezeu", "În Egipt", "La Marea Roșie", "În Madian"],
-      "correct": 0
-    },
-    {
-      "question": "Gherșom înseamnă:",
-      "options": ["Străin", "Uitare", "Ajutorul lui Dumnezeu", "Binecuvântare"],
-      "correct": 0
-    },
-    {
-      "question": "Ce fenomene s-au întâmplat în ziua primirii Legii?",
-      "options": ["Tunete, fulgere și o mare grindină", "Un nor gros", "Muntele se scutura cu putere", "O ploaie de foc"],
-      "correct": 2
-    },
-    {
-      "question": "Ce i-a împiedicat pe israeliți să creadă cuvintele Domnului?",
-      "options": ["Desnădejdea și robia aspră", "Necredința față de Dumnezeu", "Necazul și pierderea copiilor", "Teama de armata lui Faraon"],
-      "correct": 0
-    },
-    {
-      "question": "Ce a răspuns poporul lui Moise la muntele Sinai?",
-      "options": ["„Poruncile sunt prea grele”", "„Iată Dumnezeul care ne-a scos”", "„Vom face tot ce a zis Domnul”", "„Vrem să ne întoarcem în Egipt”"],
-      "correct": 2
-    },
-    {
-      "question": "La ce fel de munci erau supuși evreii?",
-      "options": ["Lucrări în lut", "Producerea cărămăzilor", "Lucrul câmpului", "Păstoritul oilor lui Faraon"],
-      "correct": 1
-    },
-    {
-      "question": "Când și cât timp ținea sărbătoarea azimilor?",
-      "options": ["Înaintea Paștelor", "După sărbătoarea pascală, 7 zile", "Din seara zilei a 14-a la 21", "În fiecare lună plină"],
-      "correct": 1
-    },
-    {
-      "question": "Ce făcea poporul când Moise mergea la cortul întâlnirii?",
-      "options": ["Se ridicau în picioare", "Stătea la ușa cortului său", "Mergeau toți în fața Cortului", "Îngenuncheau cu fața la pământ"],
-      "correct": 1
-    },
-    {
-      "question": "Cui a spus Domnul: „Iată că te fac Dumnezeu”?",
-      "options": ["Lui Avraam", "Lui Iosif", "Lui Moise", "Lui Aaron"],
-      "correct": 2
-    },
-    {
-      "question": "Din ce material a poruncit Moise să se facă chivotul?",
-      "options": ["Cedru", "Salcâm", "Stejar", "Măslin"],
-      "correct": 1
-    },
-    {
-      "question": "Ce animal trebuia pregătit pentru Paște?",
-      "options": ["Un miel", "Un ied", "Un animal fără cusur (miel/ied)", "Un vițel gras"],
-      "correct": 2
-    },
-    {
-      "question": "Ce a mai luat Moise cu el din Egipt?",
-      "options": ["Toată averea lui Faraon", "Visteria Casei Domnului", "Oasele lui Iosif", "Toiagul lui Faraon"],
-      "correct": 2
-    },
-    {
-      "question": "În ce lună au ieșit evreii din Egipt?",
-      "options": ["În luna nouă", "În luna Nisan", "În luna spicelor", "În luna ploilor"],
-      "correct": 2
-    },
-    {
-      "question": "Soția lui Moise a fost...",
-      "options": ["Fecioară evreică", "Fiica unui preot", "Femeie egipteană", "O femeie din neamul lui Amalec"],
-      "correct": 1
-    },
-    {
-      "question": "Cine era ajutorul lui Bețaleel la facerea cortului?",
-      "options": ["Oholiab", "Ahisamac", "Hur", "Iosua"],
-      "correct": 0
-    },
-    {
-      "question": "Unde a fugit Moise după ce a omorât egipteanul?",
-      "options": ["Madian", "Avit", "Cades-Barnea", "În pustia Sin"],
-      "correct": 0
-    },
-    {
-      "question": "Care este a 6-a poruncă a Decalogului?",
-      "options": ["Să nu ucizi", "Să nu furi", "Să nu preacurvești", "Să nu mărturisești strâmb"],
-      "correct": 0
-    },
-    {
-        "question": "Ce urgie este scris că a făcut deosebire între Gosen și restul Egiptului?",
-        "options": ["Păduchii", "Broaștele", "Musca câinească", "Lăcustele"],
-        "correct": 2
-      },
-      {
-        "question": "Câte zile au trecut după ce Domnul a lovit râul și acesta s-a prefăcut în sânge?",
-        "options": ["Cinci zile", "Șapte zile", "Zece zile", "Trei zile"],
-        "correct": 1
-      },
-      {
-        "question": "Care este continuarea cuvintelor: „Dacă nu mergi Tu însuți cu noi, ...”?",
-        "options": ["...nu ne lăsa să ne îndepărtăm", "...nu mai vrem să mergem", "...nu ne lăsa să plecăm de aici", "...vom pieri în pustie"],
-        "correct": 2
-      },
-      {
-        "question": "Cu ce ocazie a spus Israel: „Vom face și vom asculta tot ce a zis Domnul”?",
-        "options": ["În robia Egiptului", "Când Moise a citit Cartea Legământului", "La Marea Roșie", "Când a căzut mana"],
-        "correct": 1
-      },
-      {
-        "question": "Când a spus Moise: „Șterge-mă din cartea Ta, pe care ai scris-o”?",
-        "options": ["La păcatul cu vițelul de aur", "Când poporul a vrut în Egipt", "Când a cerut să intre în Canaan", "La Mara când apa era amară"],
-        "correct": 0
-      },
-      {
-        "question": "De când a început să strălucească fața lui Moise?",
-        "options": ["După primele table", "După ce s-a pogorât cu noile table", "La prima întâlnire cu Domnul", "Când a bătut stânca"],
-        "correct": 1
-      },
-      {
-        "question": "Cine a luat parte la jertfa de mâncare dată de Ietro?",
-        "options": ["Tot poporul", "Aaron și toți bătrânii lui Israel", "Doar familia lui Moise", "Iosua și Caleb"],
-        "correct": 1
-      },
-      {
-        "question": "Unde își avea locul îngerul Domnului în timpul înaintării taberei?",
-        "options": ["În spatele taberei", "În Cortul Întâlnirii", "În fața taberei", "Deasupra Chivotului"],
-        "correct": 0
-      },
-      {
-        "question": "Cum se numea femeia care i-a spus soțului: „Tu ești un soț de sânge pentru mine”?",
-        "options": ["Sarai", "Rut", "Sefora", "Maria"],
-        "correct": 2
-      },
-      {
-        "question": "Unde a venit Amalec să-l bată pe Israel?",
-        "options": ["La Horeb", "La Refidim", "La Sucot", "La Elim"],
-        "correct": 1
-      },
-      {
-        "question": "Completează: Să nu te iei după mulțime ...",
-        "options": ["Ca să faci rău", "Ca să faci o mărturisire mincinoasă", "Ca să părtinești pe sărac", "Ca să nu asculți de Lege"],
-        "correct": 0
-      },
-      {
-        "question": "Cine a mai venit împreună cu socrul lui Moise la tabăra lui Israel?",
-        "options": ["Sefora, soția lui Moise", "Copiii lui Moise", "Toată casa socrului său", "Bătrânii Madianului"],
-        "correct": 1
-      },
-      {
-        "question": "Cum se mai numea țara făgăduită?",
-        "options": ["Țară bună și întinsă", "Țară în care curge lapte și miere", "Țara călătoriilor sfinte", "Grădina Domnului"],
-        "correct": 1
-      },
-      {
-        "question": "Cât timp a stat Moise a doua oară pe munte?",
-        "options": ["6 zile și 6 nopți", "7 zile și 7 nopți", "40 de zile și 40 de nopți", "3 zile și 3 nopți"],
-        "correct": 2
-      },
-      {
-        "question": "De ce nu este bine să primim daruri la judecată?",
-        "options": ["Darurile orbesc", "Sucesc hotărârile", "Darurile aduc moartea", "Aduce mânia poporului"],
-        "correct": 0
-      },
-      {
-        "question": "De câte ori trebuia să facă Aaron ispășire pe coarnele altarului?",
-        "options": ["În fiecare zi", "De câte ori era nevoie", "O singură dată pe an", "În fiecare Sabat"],
-        "correct": 2
-      },
-      {
-        "question": "La ce urgie a folosit Faraon cuvintele: „Rugați-vă Domnului... și vă voi lăsa”?",
-        "options": ["La urgia a 4-a", "La urgia a 6-a", "La urgia a 7-a (piatra și focul)", "La prima urgie"],
-        "correct": 2
-      },
-      {
-        "question": "În ce capitol din Exodul se spune că fața lui Moise strălucea?",
-        "options": ["În capitolul 32", "În capitolul 34", "În capitolul 40", "În capitolul 19"],
-        "correct": 1
-      },
-      {
-        "question": "Câte urgii au venit peste Egipt în total?",
-        "options": ["7 urgii", "10 urgii", "12 urgii", "3 urgii"],
-        "correct": 1
-      },
-      {
-        "question": "Câte izvoare erau la Elim?",
-        "options": ["7", "20", "12", "3"],
-        "correct": 2
-      },
-      {
-        "question": "După ce criterii a ales Moise căpeteniile peste popor?",
-        "options": ["Oameni destoinici și de încredere", "Vrășmași ai lăcomiei", "Toată casa lor în slujbă", "Cei mai bătrâni din triburi"],
-        "correct": 0
-      },
-      {
-        "question": "Cum trebuia pregătit mielul sau iedul pentru Paște?",
-        "options": ["Cu azimi și verdețuri amare", "Fript la foc", "Doar cu azimi", "Fiert în apă"],
-        "correct": 1
-      },
-      {
-        "question": "Ce fel de lemn a fost folosit la facerea Chivotului?",
-        "options": ["Cedru", "Salcâm", "Chiparos", "Stejar"],
-        "correct": 1
-      },
-      {
-        "question": "De ce nu a putut fi băută apa de la Mara?",
-        "options": ["Pentru că era amară", "Pentru că era sărată", "Pentru că era murdară", "Pentru că era caldă"],
-        "correct": 0
-      },
-      {
-        "question": "Care din următoarele nume NU a fost fiul lui Aaron?",
-        "options": ["Itamar", "Elifaz", "Nadab", "Abihu"],
-        "correct": 1
-      },
-      {
-        "question": "Ce sfat i-a dat Ietro lui Moise?",
-        "options": ["Să fie tălmaciul poporului", "Să-i învețe poruncile și legile", "Să pună căpetenii care să judece", "Să se întoarcă în Madian"],
-        "correct": 2
-      },
-      {
-        "question": "Care a fost primul război cu sabia după ieșirea din Egipt?",
-        "options": ["Cu egiptenii", "Împotriva lui Amalec", "Cu cei care cârteau", "Cu Madianiții"],
-        "correct": 1
-      },
-      {
-        "question": "După care urgie a spus Faraon: „Duceți-vă, să rămână doar oile și boii”?",
-        "options": ["Urgia cu lăcustele", "Urgia cu întunericul", "Urgia cu ciuma", "Urgia cu broaștele"],
-        "correct": 1
-      },
-      {
-        "question": "Câte luni a fost ascuns Moise de către mama sa?",
-        "options": ["3 luni", "4 luni", "6 luni", "1 lună"],
-        "correct": 0
-      },
-      {
-        "question": "În ce mare au fost aruncate lăcustele de către vânt?",
-        "options": ["Marea Neagră", "Marea Roșie", "Marea Egee", "Marea Mediterană"],
-        "correct": 1
-      },
-      {
-        "question": "Sub ce nume s-a prezentat Domnul lui Moise la rug?",
-        "options": ["„Eu sunt”", "„Eu sunt Cel ce sunt”", "„Alfa și Omega”", "„Domnul Oștirilor”"],
-        "correct": 1
-      },
-      {
-        "question": "Cine a scăpat de cea de-a șaptea urgie (piatra)?",
-        "options": ["Cei din Gosen", "Egiptenii care s-au temut de cuvânt", "Turmele lui Faraon", "Nimeni"],
-        "correct": 1
-      },
-      {
-        "question": "Ce se întâmpla cu un rob care dorea să rămână la stăpân?",
-        "options": ["Era dus la Dumnezeu", "I se găurea urechea la o ușă", "I se găurea urechea la un stâlp", "Primea o moștenire"],
-        "correct": 1
-      },
-      {
-        "question": "Cu cine a urcat Moise pe munte cu noile table?",
-        "options": ["Împreună cu Iosua", "Singur", "Cu Aaron și Hur", "Cu cei 70 de bătrâni"],
-        "correct": 1
-      },
-      {
-        "question": "Cine a spus: „Aici este degetul lui Dumnezeu”?",
-        "options": ["Văduva din Sarepta", "Vrăjitorii lui Faraon", "Iacov", "Iosua"],
-        "correct": 1
-      },
-      {
-        "question": "Ce a sfărâmat Moise când a văzut vițelul de aur?",
-        "options": ["Idolii", "Tablele Legii", "Stânca", "Altarul"],
-        "correct": 1
-      },
-      {
-        "question": "Ce vârstă avea Moise când a fost pus pe Nil?",
-        "options": ["3 luni", "1 lună", "5 săptămâni", "1 an"],
-        "correct": 0
-      },
-      {
-        "question": "A câta urgie a fost vărsatul negru?",
-        "options": ["A 7-a", "A 5-a", "A 6-a", "A 4-a"],
-        "correct": 2
-      },
-      {
-        "question": "Din ce era constituită jertfa necurmată zilnică?",
-        "options": ["Din 2 miei", "Din un miel și un berbece", "Din 2 berbeci", "Din un vițel"],
-        "correct": 0
-      },
-      {
-        "question": "Cine și cui a spus: „Ce faci tu, nu este bine”?",
-        "options": ["Moise lui Faraon", "Moise lui Aaron", "Ietro lui Moise", "Dumnezeu lui Moise"],
-        "correct": 2
-      },
-      {
-        "question": "La cine a fost trimis Moise pentru prima dată la întoarcerea în Egipt?",
-        "options": ["La Faraon", "La familia lui", "La bătrânii poporului", "La moașele evreilor"],
-        "correct": 2
-      },
-      {
-        "question": "În ce zi a lunii întâi începea sărbătoarea Paștelor?",
-        "options": ["În ziua întâi", "În ziua a 14-a", "În ziua a 21-a", "În ziua a 7-a"],
-        "correct": 1
-      },
-      {
-        "question": "Pitom a fost:",
-        "options": ["Șarpele înălțat de Moise", "Un ținut din Canaan", "O cetate din Egipt", "Numele tatălui lui Moise"],
-        "correct": 2
-      },
-      {
-        "question": "Ce trebuia să facă stăpânul cu robul pe care l-a lovit și l-a făcut să își piardă vederea?",
-        "options": ["Să îi dea drumul", "Să îi plătească 2 talanți", "Să-l scutească de lucru 6 zile", "Să-l vândă altui stăpân"],
-        "correct": 0
-      },
-      {
-        "question": "Cine a spus cuvintele: „În tabără este un strigăt de război”?",
-        "options": ["Moise", "Dumnezeu", "Iosua", "Aaron"],
-        "correct": 2
-      },
-      {
-        "question": "Cine a fost Ietro și ce a făcut el pentru Israel?",
-        "options": ["Preot al Madianului, l-a sfătuit pe Moise să pună căpetenii", "Socrul lui Moise, a condus poporul prin Marea Roșie", "Fratele lui Moise, a făcut vițelul", "O căpetenie din seminția lui Iuda"],
-        "correct": 0
-      },
-      {
-        "question": "Unde scrie: „Domnul va împărăți în veac și în veci de veci”?",
-        "options": ["În capitolul 2", "În capitolul 15", "În capitolul 34", "În capitolul 20"],
-        "correct": 1
-      },
-      {
-        "question": "Care a fost prima urgie care a lovit Egiptul?",
-        "options": ["Prefacerea apei în sânge", "Ciuma vitelor", "Păduchii", "Broaștele"],
-        "correct": 0
-      },
-      {
-        "question": "Ce l-a determinat pe Dumnezeu să-i izbăvească pe evrei din Egipt?",
-        "options": ["Legământul făcut cu părinții lor", "Strigătele acestora", "Suferința grea", "Toate cele de mai sus"],
-        "correct": 0
-      },
-      {
-        "question": "După cât timp un rob evreu putea să iasă slobod de la stăpânul lui?",
-        "options": ["După 7 ani", "După 12 ani", "După 21 de ani", "După 50 de ani"],
-        "correct": 0
-      },
-      {
-        "question": "Chivotul a fost făcut din:",
-        "options": ["Aur pur", "Lemn de gofer", "Lemn de salcâm", "Lemn de cedru"],
-        "correct": 2
-      },
-      {
-        "question": "Cine a cântat cântarea de laudă după trecerea Mării Roșii?",
-        "options": ["Doar Moise și Aaron", "Copiii lui Israel", "Doar Maria cu femeile", "Iosua și Caleb"],
-        "correct": 1
-      },
-      {
-        "question": "Preoțimea a început în Israel odată cu:",
-        "options": ["Iacov", "Eliberarea din Egipt", "Aaron și fiii lui", "Moise la rugul aprins"],
-        "correct": 2
-      },
-      {
-        "question": "Cum se poate descrie mana din pustie?",
-        "options": ["Albă la culoare și cu gust de turtă cu miere", "Ca o pâine obișnuită", "Cu gust de smochine", "Ca boabele de linte roșie"],
-        "correct": 0
-      },
-      {
-        "question": "Cine a fost Șifra?",
-        "options": ["Soția lui Moise", "O moașă a evreilor", "O femeie madianită", "Sora lui Aaron"],
-        "correct": 1
-      },
-      {
-        "question": "Ce făcea Iosua când Moise ieșea din cort și intra în tabără?",
-        "options": ["Mergea tot timpul după Moise", "Nu ieșea deloc din mijlocul cortului", "Se ruga la poarta cortului", "Aduna bătrânii poporului"],
-        "correct": 1
-      },
-      {
-        "question": "Cum a reacționat Moise la vederea vițelului de aur?",
-        "options": ["A sfărâmat tablele legii și vițelul", "A prefăcut vițelul în cenușă pe loc", "S-a aprins de mânie", "Toate cele de mai sus"],
-        "correct": 0
-      },
-      {
-        "question": "Pe cine a chemat Faraon când a văzut toiagul prefăcut în șarpe?",
-        "options": ["Pe înțelepți", "Pe vrăjitori", "Pe soldați", "Pe preoții egipteni"],
-        "correct": 1
-      },
-      {
-        "question": "Când au jefuit evreii pe egipteni?",
-        "options": ["Când erau robi în Egipt", "Când au ieșit din Egipt", "La Marea Roșie", "După trecerea prin pustie"],
-        "correct": 1
-      },
-      {
-        "question": "Unde a spus Domnul să tăbărască evreii prima dată după ieșire?",
-        "options": ["Înaintea Pihahirotului", "Între Migdol și mare", "Față în față cu Baal-Țefon", "Toate cele de mai sus (contextual)"],
-        "correct": 3
-      },
-      {
-        "question": "Cine a aruncat cenușa spre cer când aceasta a dat naștere beșicilor?",
-        "options": ["Aaron", "Moise", "Moise și Aaron", "Iosua"],
-        "correct": 1
-      },
-      {
-        "question": "Cum se numeau moașele evreilor care nu au ascultat de Faraon?",
-        "options": ["Șifra și Pua", "Iochebed și Maria", "Sefora și Maria", "Debora și Estera"],
-        "correct": 0
-      },
-      {
-        "question": "Din ce a fost făcut vițelul de aur?",
-        "options": ["Inele de aur", "Cercei de aur", "Cercei și inele de aur", "Vase de aur furate"],
-        "correct": 1
-      },
-      {
-        "question": "Cât timp a durat șederea copiilor lui Israel în Egipt?",
-        "options": ["430 de ani", "450 de ani", "400 de ani", "215 ani"],
-        "correct": 0
-      },
-      {
-        "question": "Ce slujbă aveau căpeteniile alese de Moise?",
-        "options": ["Să judece pricinile cele mai mici", "Să călăuzească prin pustie", "Să ducă poporul în Canaan", "Să păzească cortul"],
-        "correct": 0
-      },
-      {
-        "question": "Ce trebuia să ceară fiecare evreu de la vecinul lui la plecare?",
-        "options": ["Vase de aur", "Vase de argint", "Vase de pământ", "Vase de argint și de aur"],
-        "correct": 3
-      },
-      {
-        "question": "Cine a strigat când și-a afirmat credincioșia la vițelul de aur?",
-        "options": ["Moise", "Iov", "Dumnezeu", "Levi"],
-        "correct": 0
-      },
-      {
-        "question": "Cine s-a întâlnit cu Moise la muntele lui Dumnezeu când s-a întors?",
-        "options": ["Domnul", "Aaron", "Faraon", "Ietro"],
-        "correct": 1
-      },
-      {
-        "question": "Câți oameni s-au suit cu Moise pe deal în timpul luptei cu Amalec?",
-        "options": ["Niciunul", "Doi (Aaron și Hur)", "Trei", "Toți bătrânii"],
-        "correct": 1
-      },
-      {
-        "question": "Cine pândea să vadă ce se întâmplă cu Moise în sicriașul de papură?",
-        "options": ["Maria, sora sa", "Mama sa", "Fiica lui Faraon", "Moașa Șifra"],
-        "correct": 0
-      },
-      {
-        "question": "Completează: „Domnul se va lupta pentru voi; dar voi...”",
-        "options": ["Scoateți strigăte", "Porniți înainte", "Stați liniștiți", "Săpați șanțuri"],
-        "correct": 2
-      },
-      {
-        "question": "Ce reprezentau hainele sfinte ale preoților?",
-        "options": ["Averea purtătorului", "Cinste și podoabă", "Deosebirea de oameni", "Protecție împotriva focului"],
-        "correct": 1
-      },
-      {
-        "question": "Eliezer a fost:",
-        "options": ["Tatăl lui Fineas", "Fiul lui Aaron", "Fiul lui Moise", "O căpetenie din Egipt"],
-        "correct": 2
-      },
-      {
-        "question": "Când l-a amenințat Faraon pe Moise cu moartea dacă îl mai vede?",
-        "options": ["Înainte de urgia a 7-a", "După urgia a 8-a", "După urgia a 9-a", "La începutul robiei"],
-        "correct": 2
-      },
-      {
-        "question": "Cine și cui a spus cuvintele: „Du-te în pace”?",
-        "options": ["Ietro lui Moise", "Ionatan lui David", "Isus femeii", "Moise lui Faraon"],
-        "correct": 0
-      },
-      {
-        "question": "Care capitol din Exodul conține cele zece porunci?",
-        "options": ["Capitolul 10", "Capitolul 20", "Capitolul 30", "Capitolul 15"],
-        "correct": 1
-      },
-      {
-        "question": "Ce obiect a folosit Moise pentru vindecarea apelor de la Mara?",
-        "options": ["Un toiag", "Un lemn", "O piatră", "Sare"],
-        "correct": 1
-      },
-      {
-        "question": "Cui a făcut Dumnezeu case pentru că s-au temut de El?",
-        "options": ["Copiilor lui Israel", "Egiptenilor", "Moașelor evreilor", "Preoților lui Ietro"],
-        "correct": 2
-      },
-      {
-        "question": "Când trebuiau purtate hainele preoțești?",
-        "options": ["Tot timpul", "Când intrau în cort", "Când făceau o slujbă în cort", "În ziua de Sabat"],
-        "correct": 2
-      },
-      {
-        "question": "Câți ani a trăit Levi?",
-        "options": ["127", "117", "137", "110"],
-        "correct": 2
-      },
-      {
-        "question": "Diferența de vârstă între Aaron și Moise a fost de:",
-        "options": ["10 ani", "7 ani", "3 ani", "5 ani"],
-        "correct": 2
-      },
-      {
-        "question": "Prin cine a izbăvit Dumnezeu pe evrei?",
-        "options": ["Aaron", "Moise", "Iosua", "Îngerul Morții"],
-        "correct": 1
-      },
-      {
-        "question": "Cât trebuiau să dea cei de peste 20 de ani ca dar de răscumpărare?",
-        "options": ["Un siclu", "O jumătate de siclu", "Doi sicli", "Un talant"],
-        "correct": 1
-      },
-      {
-        "question": "Unde scrie „fii cu ochii în patru înaintea îngerului Meu”?",
-        "options": ["În capitolul 3", "În capitolul 19", "În capitolul 23", "În capitolul 33"],
-        "correct": 2
-      },
-      {
-        "question": "Care a fost primul popas după ieșirea din Egipt?",
-        "options": ["Etam", "Mara", "Sucot", "Elim"],
-        "correct": 2
-      },
-      {
-        "question": "Din ce seminție a făcut parte Moise?",
-        "options": ["A lui Levi", "A lui Iuda", "A lui Beniamin", "A lui Ruben"],
-        "correct": 0
-      },
-      {
-        "question": "Cine avea voie să se apropie de Domnul pe muntele Sinai la început?",
-        "options": ["Doar Moise", "Doar Aaron și Moise", "Doar bătrânii", "Tot poporul"],
-        "correct": 0
-      },
-      {
-        "question": "Care a fost prima minune (semn) în fața lui Faraon?",
-        "options": ["Apa în sânge", "Toiagul prefăcut în șarpe", "Păduchii", "Întunericul"],
-        "correct": 1
-      },
-      {
-        "question": "Ce a făcut Moise cu vițelul de aur?",
-        "options": ["L-a ars și l-a făcut cenușă în apă", "L-a îngropat în nisip", "L-a dat înapoi lui Aaron", "L-a spart cu ciocanul"],
-        "correct": 0
-      },
-      {
-        "question": "Câte zile trebuia poporul să se sfințească înainte de darea Legii?",
-        "options": ["Două zile", "Trei zile", "Șapte zile", "40 de zile"],
-        "correct": 0
-      },
-      {
-        "question": "Completează: „Domnul va binecuvânta...”",
-        "options": ["Țara", "Pâinea și apele", "Hainele", "Casele voastre"],
-        "correct": 1
-      },
-      {
-        "question": "Proorocița din Israel care a cântat la instrument a fost:",
-        "options": ["Debora", "Maria, sora lui Moise", "Hulda", "Estera"],
-        "correct": 1
-      }
-    
-  ]
+  {
+    "question": "În ce împrejurare a fost dată o poruncă prin care fiecare băiat mic să fie aruncat în râu?",
+    "options": ["Când s-a născut Isus", "Când Israel era în Egipt", "Când s-a născut Moise", "Când s-a născut Iosif"],
+    "correct": 2
+  },
+  {
+    "question": "Florile cărei plante sunt reprezentate pe sfeșnicul din cortul întâlnirii?",
+    "options": ["migdal", "măslin", "smochin", "finic"],
+    "correct": 0
+  },
+  {
+    "question": "Tabla de aur cu inscripția: Sfânt (sfințenie) Domnului, pe care trebuiau s-o poarte preoții, trebuia pusă:",
+    "options": ["Pe pieptarul judecății", "Pe mantie", "Pe mitră", "Pe toiagul lui Aaron"],
+    "correct": 2
+  },
+  {
+    "question": "Ce poruncă a dat Faraon, cu privire la evrei, după prima întâlnire cu Moise și Aaron?",
+    "options": ["Să se mărească numărul de cărămizi", "Să nu se mai dea paie pentru cărămizi", "Numărul de cărămizi să rămână același", "Să fie alungați din Egipt pe loc"],
+    "correct": 1
+  },
+  {
+    "question": "Cum s-a prezentat Dumnezeu lui Moise?",
+    "options": ["“Dumnezeul lui Avraam, Isaac și Iacov”", "“Iehova”", "“Eu sunt”", "“Dumnezeul cel Atotputernic”"],
+    "correct": 0
+  },
+  {
+    "question": "Din ce era făcută învelitoarea exterioară a cortului?",
+    "options": ["piei de capră", "piei de berbeci", "piei de vițel de mare", "in subțire răsucit"],
+    "correct": 2
+  },
+  {
+    "question": "Cum se numea omul din poporul Israel în care Dumnezeu a pus un duh de înțelepciune pentru a lucra la facerea cortului?",
+    "options": ["Bețaleel", "Dan", "Hur", "Iosua"],
+    "correct": 0
+  },
+  {
+    "question": "Ce trebuia să facă un rob pentru a putea lua parte la Paștele evreilor?",
+    "options": ["Să aibă cetățenie în Israel", "Să fie tăiat împrejur", "Să dea zecuială din tot ce are", "Să spele picioarele preoților"],
+    "correct": 1
+  },
+  {
+    "question": "Cine a spus: Cunosc acum că Domnul este mai mare decât toți dumnezeii?",
+    "options": ["Faraon", "Ietro", "Naaman", "Moise"],
+    "correct": 1
+  },
+  {
+    "question": "Asir, Elcana și Abiasaf sunt ...",
+    "options": ["fiii lui Ieroboam", "fiii lui Core", "fiii lui Amon", "fiii lui Iuda"],
+    "correct": 1
+  },
+  {
+    "question": "Unde s-a întâlnit Moise, când s-a întors în Egipt, cu Aaron?",
+    "options": ["La muntele lui Dumnezeu", "În Egipt", "La Marea Roșie", "În Madian"],
+    "correct": 0
+  },
+  {
+    "question": "Gherșom înseamnă:",
+    "options": ["Străin", "Uitare", "Ajutorul lui Dumnezeu", "Binecuvântare"],
+    "correct": 0
+  },
+  {
+    "question": "Ce i-a împiedicat pe israeliți să creedă cuvintele Domnului?",
+    "options": ["Desnădejdea și robia aspră", "Necredința față de Dumnezeu", "Necazul și pierderea copiilor", "Teama de armata lui Faraon"],
+    "correct": 0
+  },
+  {
+    "question": "Ce a răspuns poporul lui Moise la muntele Sinai?",
+    "options": ["„Poruncile sunt prea grele”", "„Iată Dumnezeul care ne-a scos”", "„Vom face tot ce a zis Domnul”", "„Vrem să ne întoarcem în Egipt”"],
+    "correct": 2
+  },
+  {
+    "question": "Când și cât timp ținea sărbătoarea azimilor?",
+    "options": ["Înaintea Paștelor", "După sărbătoarea pascală, 7 zile", "Din seara zilei a 14-a la 21", "În fiecare lună plină"],
+    "correct": 1
+  },
+  {
+    "question": "Ce făcea poporul când Moise mergea la cortul întâlnirii?",
+    "options": ["Se ridicau în picioare", "Stătea la ușa cortului său", "Mergeau toți în fața Cortului", "Îngenuncheau cu fața la pământ"],
+    "correct": 1
+  },
+  {
+    "question": "Cui a spus Domnul: „Iată că te fac Dumnezeu”?",
+    "options": ["Lui Avraam", "Lui Iosif", "Lui Moise", "Lui Aaron"],
+    "correct": 2
+  },
+  {
+    "question": "Din ce material a poruncit Moise să se facă chivotul?",
+    "options": ["Cedru", "Salcâm", "Stejar", "Măslin"],
+    "correct": 1
+  },
+  {
+    "question": "Ce animal trebuia pregătit pentru Paște?",
+    "options": ["Un miel", "Un ied", "Un animal fără cusur (miel/ied)", "Un vițel gras"],
+    "correct": 2
+  },
+  {
+    "question": "Ce a mai luat Moise cu el din Egipt?",
+    "options": ["Toată averea lui Faraon", "Visteria Casei Domnului", "Oasele lui Iosif", "Toiagul lui Faraon"],
+    "correct": 2
+  },
+  {
+    "question": "În ce lună au ieșit evreii din Egipt?",
+    "options": ["În luna nouă", "În luna Nisan", "În luna spicelor", "În luna ploilor"],
+    "correct": 2
+  },
+  {
+    "question": "Soția lui Moise a fost...",
+    "options": ["Fecioară evreică", "Fiica unui preot", "Femeie egipteană", "O femeie din neamul lui Amalec"],
+    "correct": 1
+  },
+  {
+    "question": "Cine era ajutorul lui Bețaleel la facerea cortului?",
+    "options": ["Oholiab", "Ahisamac", "Hur", "Iosua"],
+    "correct": 0
+  },
+  {
+    "question": "Unde a fugit Moise după ce a omorât egipteanul?",
+    "options": ["Madian", "Avit", "Cades-Barnea", "În pustia Sin"],
+    "correct": 0
+  },
+  {
+    "question": "Care este a 6-a poruncă a Decalogului?",
+    "options": ["Să nu ucizi", "Să nu furi", "Să nu preacurvești", "Să nu mărturisești strâmb"],
+    "correct": 0
+  },
+  {
+    "question": "Ce urgie este scris că a făcut deosebire între Gosen și restul Egiptului?",
+    "options": ["Păduchii", "Broaștele", "Musca câinească", "Lăcustele"],
+    "correct": 2
+  },
+  {
+    "question": "Câte zile au trecut după ce Domnul a lovit râul și acesta s-a prefăcut în sânge?",
+    "options": ["Cinci zile", "Șapte zile", "Zece zile", "Trei zile"],
+    "correct": 1
+  },
+  {
+    "question": "Care este continuarea cuvintelor: „Dacă nu mergi Tu însuți cu noi, ...”?",
+    "options": ["...nu ne lăsa să ne îndepărtăm", "...nu mai vrem să mergem", "...nu ne lăsa să plecăm de aici", "...vom pieri în pustie"],
+    "correct": 2
+  },
+  {
+    "question": "Cu ce ocazie a spus Israel: „Vom face și vom asculta tot ce a zis Domnul”?",
+    "options": ["În robia Egiptului", "Când Moise a citit Cartea Legământului", "La Marea Roșie", "Când a căzut mana"],
+    "correct": 1
+  },
+  {
+    "question": "Când a spus Moise: „Șterge-mă din cartea Ta, pe care ai scris-o”?",
+    "options": ["La păcatul cu vițelul de aur", "Când poporul a vrut în Egipt", "Când a cerut să intre în Canaan", "La Mara când apa era amară"],
+    "correct": 0
+  },
+  {
+    "question": "De când a început să strălucească fața lui Moise?",
+    "options": ["După primele table", "După ce s-a pogorât cu noile table", "La prima întâlnire cu Domnul", "Când a bătut stânca"],
+    "correct": 1
+  },
+  {
+    "question": "Cine a luat parte la jertfa de mâncare dată de Ietro?",
+    "options": ["Tot poporul", "Aaron și toți bătrânii lui Israel", "Doar familia lui Moise", "Iosua și Caleb"],
+    "correct": 1
+  },
+  {
+    "question": "Unde își avea locul îngerul Domnului în timpul înaintării taberei?",
+    "options": ["În spatele taberei", "În Cortul Întâlnirii", "În fața taberei", "Deasupra Chivotului"],
+    "correct": 0
+  },
+  {
+    "question": "Cum se numea femeia care i-a spus soțului: „Tu ești un soț de sânge pentru mine”?",
+    "options": ["Sarai", "Rut", "Sefora", "Maria"],
+    "correct": 2
+  },
+  {
+    "question": "Unde a venit Amalec să-l bată pe Israel?",
+    "options": ["La Horeb", "La Refidim", "La Sucot", "La Elim"],
+    "correct": 1
+  },
+  {
+    "question": "Completează: Să nu te iei după mulțime ...",
+    "options": ["Ca să faci rău", "Ca să faci o mărturisire mincinoasă", "Ca să părtinești pe sărac", "Ca să nu asculți de Lege"],
+    "correct": 0
+  },
+  {
+    "question": "Cine a mai venit împreună cu socrul lui Moise la tabăra lui Israel?",
+    "options": ["Sefora, soția lui Moise", "Copiii lui Moise", "Toată casa socrului său", "Bătrânii Madianului"],
+    "correct": 1
+  },
+  {
+    "question": "Cum se mai numea țara făgăduită?",
+    "options": ["Țară bună și întinsă", "Țară în care curge lapte și miere", "Țara călătoriilor sfinte", "Grădina Domnului"],
+    "correct": 1
+  },
+  {
+    "question": "Cât timp a stat Moise a doua oară pe munte?",
+    "options": ["6 zile și 6 nopți", "7 zile și 7 nopți", "40 de zile și 40 de nopți", "3 zile și 3 nopți"],
+    "correct": 2
+  },
+  {
+    "question": "De câte ori trebuia să facă Aaron ispășire pe coarnele altarului?",
+    "options": ["În fiecare zi", "De câte ori era nevoie", "O singură dată pe an", "În fiecare Sabat"],
+    "correct": 2
+  },
+  {
+    "question": "În ce capitol din Exodul se spune că fața lui Moise strălucea?",
+    "options": ["În capitolul 32", "În capitolul 34", "În capitolul 40", "În capitolul 19"],
+    "correct": 1
+  },
+  {
+    "question": "Câte urgii au venit peste Egipt în total?",
+    "options": ["7 urgii", "10 urgii", "12 urgii", "3 urgii"],
+    "correct": 1
+  },
+  {
+    "question": "Câte izvoare erau la Elim?",
+    "options": ["7", "20", "12", "3"],
+    "correct": 2
+  },
+  {
+    "question": "Cum trebuia pregătit mielul sau iedul pentru Paște?",
+    "options": ["Cu azimi și verdețuri amare", "Fript la foc", "Doar cu azimi", "Fiert în apă"],
+    "correct": 1
+  },
+  {
+    "question": "Ce fel de lemn a fost folosit la facerea Chivotului?",
+    "options": ["Cedru", "Salcâm", "Chiparos", "Stejar"],
+    "correct": 1
+  },
+  {
+    "question": "De ce nu a putut fi băută apa de la Mara?",
+    "options": ["Pentru că era amară", "Pentru că era sărată", "Pentru că era murdară", "Pentru că era caldă"],
+    "correct": 0
+  },
+  {
+    "question": "Care din următoarele nume NU a fost fiul lui Aaron?",
+    "options": ["Itamar", "Elifaz", "Nadab", "Abihu"],
+    "correct": 1
+  },
+  {
+    "question": "Ce sfat i-a dat Ietro lui Moise?",
+    "options": ["Să fie tălmaciul poporului", "Să-i învețe poruncile și legile", "Să pună căpetenii care să judece", "Să se întoarcă în Madian"],
+    "correct": 2
+  },
+  {
+    "question": "Care a fost primul război cu sabia după ieșirea din Egipt?",
+    "options": ["Cu egiptenii", "Împotriva lui Amalec", "Cu cei care cârteau", "Cu Madianiții"],
+    "correct": 1
+  },
+  {
+    "question": "După care urgie a spus Faraon: „Duceți-vă, să rămână doar oile și boii”?",
+    "options": ["Urgia cu lăcustele", "Urgia cu întunericul", "Urgia cu ciuma", "Urgia cu broaștele"],
+    "correct": 1
+  },
+  {
+    "question": "Câte luni a fost ascuns Moise de către mama sa?",
+    "options": ["3 luni", "4 luni", "6 luni", "1 lună"],
+    "correct": 0
+  },
+  {
+    "question": "În ce mare au fost aruncate lăcustele de către vânt?",
+    "options": ["Marea Neagră", "Marea Roșie", "Marea Egee", "Marea Mediterană"],
+    "correct": 1
+  },
+  {
+    "question": "Sub ce nume s-a prezentat Domnul lui Moise la rug?",
+    "options": ["„Eu sunt”", "„Eu sunt Cel ce sunt”", "„Alfa și Omega”", "„Domnul Oștirilor”"],
+    "correct": 1
+  },
+  {
+    "question": "Cine a scăpat de cea de-a șaptea urgie (piatra)?",
+    "options": ["Cei din Gosen", "Egiptenii care s-au temut de cuvânt", "Turmele lui Faraon", "Nimeni"],
+    "correct": 1
+  },
+  {
+    "question": "Ce se întâmpla cu un rob care dorea să rămână la stăpân?",
+    "options": ["Era dus la Dumnezeu", "I se găurea urechea la o ușă", "I se găurea urechea la un stâlp", "Primea o moștenire"],
+    "correct": 1
+  },
+  {
+    "question": "Cu cine a urcat Moise pe munte cu noile table?",
+    "options": ["Împreună cu Iosua", "Singur", "Cu Aaron și Hur", "Cu cei 70 de bătrâni"],
+    "correct": 1
+  },
+  {
+    "question": "Cine a spus: „Aici este degetul lui Dumnezeu”?",
+    "options": ["Văduva din Sarepta", "Vrăjitorii lui Faraon", "Iacov", "Iosua"],
+    "correct": 1
+  },
+  {
+    "question": "Ce vârstă avea Moise când a fost pus pe Nil?",
+    "options": ["3 luni", "1 lună", "5 săptămâni", "1 an"],
+    "correct": 0
+  },
+  {
+    "question": "A câta urgie a fost vărsatul negru?",
+    "options": ["A 7-a", "A 5-a", "A 6-a", "A 4-a"],
+    "correct": 2
+  },
+  {
+    "question": "Din ce era constituită jertfa necurmată zilnică?",
+    "options": ["Din 2 miei", "Din un miel și un berbece", "Din 2 berbeci", "Din un vițel"],
+    "correct": 0
+  },
+  {
+    "question": "Cine și cui a spus: „Ce faci tu, nu este bine”?",
+    "options": ["Moise lui Faraon", "Moise lui Aaron", "Ietro lui Moise", "Dumnezeu lui Moise"],
+    "correct": 2
+  },
+  {
+    "question": "La cine a fost trimis Moise pentru prima dată la întoarcerea în Egipt?",
+    "options": ["La Faraon", "La familia lui", "La bătrânii poporului", "La moașele evreilor"],
+    "correct": 2
+  },
+  {
+    "question": "În ce zi a lunii întâi începea sărbătoarea Paștelor?",
+    "options": ["În ziua întâi", "În ziua a 14-a", "În ziua a 21-a", "În ziua a 7-a"],
+    "correct": 1
+  },
+  {
+    "question": "Pitom a fost:",
+    "options": ["Șarpele înălțat de Moise", "Un ținut din Canaan", "O cetate din Egipt", "Numele tatălui lui Moise"],
+    "correct": 2
+  },
+  {
+    "question": "Ce trebuia să facă stăpânul cu robul pe care l-a lovit și l-a făcut să își piardă vederea?",
+    "options": ["Să îi dea drumul", "Să îi plătească 2 talanți", "Să-l scutească de lucru 6 zile", "Să-l vândă altui stăpân"],
+    "correct": 0
+  },
+  {
+    "question": "Cine a spus cuvintele: „În tabără este un strigăt de război”?",
+    "options": ["Moise", "Dumnezeu", "Iosua", "Aaron"],
+    "correct": 2
+  },
+  {
+    "question": "Cine a fost Ietro și ce a făcut el pentru Israel?",
+    "options": ["Preot al Madianului, l-a sfătuit pe Moise să pună căpetenii", "Socrul lui Moise, a condus poporul prin Marea Roșie", "Fratele lui Moise, a făcut vițelul", "O căpetenie din seminția lui Iuda"],
+    "correct": 0
+  },
+  {
+    "question": "Unde scrie: „Domnul va împărăți în veac și în veci de veci”?",
+    "options": ["În capitolul 2", "În capitolul 15", "În capitolul 34", "În capitolul 20"],
+    "correct": 1
+  },
+  {
+    "question": "Care a fost prima urgie care a lovit Egiptul?",
+    "options": ["Prefacerea apei în sânge", "Ciuma vitelor", "Păduchii", "Broaștele"],
+    "correct": 0
+  },
+  {
+    "question": "Ce l-a determinat pe Dumnezeu să-i izbăvească pe evrei din Egipt?",
+    "options": ["Legământul făcut cu părinții lor", "Strigătele acestora", "Suferința grea", "Toate cele de mai sus"],
+    "correct": 0
+  },
+  {
+    "question": "După cât timp un rob evreu putea să iasă slobod de la stăpânul lui?",
+    "options": ["După 7 ani", "După 12 ani", "După 21 de ani", "După 50 de ani"],
+    "correct": 0
+  },
+  {
+    "question": "Chivotul a fost făcut din:",
+    "options": ["Aur pur", "Lemn de gofer", "Lemn de salcâm", "Lemn de cedru"],
+    "correct": 2
+  },
+  {
+    "question": "Cine a cântat cântarea de laudă după trecerea Mării Roșii?",
+    "options": ["Doar Moise și Aaron", "Copiii lui Israel", "Doar Maria cu femeile", "Iosua și Caleb"],
+    "correct": 1
+  },
+  {
+    "question": "Preoțimea a început în Israel odată cu:",
+    "options": ["Iacov", "Eliberarea din Egipt", "Aaron și fiii lui", "Moise la rugul aprins"],
+    "correct": 2
+  },
+  {
+    "question": "Cum se poate descrie mana din pustie?",
+    "options": ["Albă la culoare și cu gust de turtă cu miere", "Ca o pâine obișnuită", "Cu gust de smochine", "Ca boabele de linte roșie"],
+    "correct": 0
+  },
+  {
+    "question": "Cine a fost Șifra?",
+    "options": ["Soția lui Moise", "O moașă a evreilor", "O femeie madianită", "Sora lui Aaron"],
+    "correct": 1
+  },
+  {
+    "question": "Ce făcea Iosua când Moise ieșea din cort și intra în tabără?",
+    "options": ["Mergea tot timpul după Moise", "Nu ieșea deloc din mijlocul cortului", "Se ruga la poarta cortului", "Aduna bătrânii poporului"],
+    "correct": 1
+  },
+  {
+    "question": "Pe cine a chemat Faraon când a văzut toiagul prefăcut în șarpe?",
+    "options": ["Pe înțelepți", "Pe vrăjitori", "Pe soldați", "Pe preoții egipteni"],
+    "correct": 1
+  },
+  {
+    "question": "Când au jefuit evreii pe egipteni?",
+    "options": ["Când erau robi în Egipt", "Când au ieșit din Egipt", "La Marea Roșie", "După trecerea prin pustie"],
+    "correct": 1
+  },
+  {
+    "question": "Cine a aruncat cenușa spre cer când aceasta a dat naștere beșicilor?",
+    "options": ["Aaron", "Moise", "Moise și Aaron", "Iosua"],
+    "correct": 1
+  },
+  {
+    "question": "Cum se numeau moașele evreilor care nu au ascultat de Faraon?",
+    "options": ["Șifra și Pua", "Iochebed și Maria", "Sefora și Maria", "Debora și Estera"],
+    "correct": 0
+  },
+  {
+    "question": "Din ce a fost făcut vițelul de aur?",
+    "options": ["Inele de aur", "Cercei de aur", "Cercei și inele de aur", "Vase de aur furate"],
+    "correct": 1
+  },
+  {
+    "question": "Cât timp a durat șederea copiilor lui Israel în Egipt?",
+    "options": ["430 de ani", "450 de ani", "400 de ani", "215 ani"],
+    "correct": 0
+  },
+  {
+    "question": "Ce slujbă aveau căpeteniile alese de Moise?",
+    "options": ["Să judece pricinile cele mai mici", "Să călăuzească prin pustie", "Să ducă poporul în Canaan", "Să păzească cortul"],
+    "correct": 0
+  },
+  {
+    "question": "Ce trebuia să ceară fiecare evreu de la vecinul lui la plecare?",
+    "options": ["Vase de aur", "Vase de argint", "Vase de pământ", "Vase de argint și de aur"],
+    "correct": 3
+  },
+  {
+    "question": "Cine a strigat când și-a afirmat credincioșia la vițelul de aur?",
+    "options": ["Moise", "Iov", "Dumnezeu", "Levi"],
+    "correct": 0
+  },
+  {
+    "question": "Cine s-a întâlnit cu Moise la muntele lui Dumnezeu când s-a întors?",
+    "options": ["Domnul", "Aaron", "Faraon", "Ietro"],
+    "correct": 1
+  },
+  {
+    "question": "Cine pândea să vadă ce se întâmplă cu Moise în sicriașul de papură?",
+    "options": ["Maria, sora sa", "Mama sa", "Fiica lui Faraon", "Moașa Șifra"],
+    "correct": 0
+  },
+  {
+    "question": "Completează: „Domnul se va lupta pentru voi; dar voi...”",
+    "options": ["Scoateți strigăte", "Porniți înainte", "Stați liniștiți", "Săpați șanțuri"],
+    "correct": 2
+  },
+  {
+    "question": "Ce reprezentau hainele sfinte ale preoților?",
+    "options": ["Averea purtătorului", "Cinste și podoabă", "Deosebirea de oameni", "Protecție împotriva focului"],
+    "correct": 1
+  },
+  {
+    "question": "Eliezer a fost:",
+    "options": ["Tatăl lui Fineas", "Fiul lui Aaron", "Fiul lui Moise", "O căpetenie din Egipt"],
+    "correct": 2
+  },
+  {
+    "question": "Când l-a amenințat Faraon pe Moise cu moartea dacă îl mai vede?",
+    "options": ["Înainte de urgia a 7-a", "După urgia a 8-a", "După urgia a 9-a", "La începutul robiei"],
+    "correct": 2
+  },
+  {
+    "question": "Cine și cui a spus cuvintele: „Du-te în pace”?",
+    "options": ["Ietro lui Moise", "Ionatan lui David", "Isus femeii", "Moise lui Faraon"],
+    "correct": 0
+  },
+  {
+    "question": "Care capitol din Exodul conține cele zece porunci?",
+    "options": ["Capitolul 10", "Capitolul 20", "Capitolul 30", "Capitolul 15"],
+    "correct": 1
+  },
+  {
+    "question": "Ce obiect a folosit Moise pentru vindecarea apelor de la Mara?",
+    "options": ["Un toiag", "Un lemn", "O piatră", "Sare"],
+    "correct": 1
+  },
+  {
+    "question": "Cui a făcut Dumnezeu case pentru că s-au temut de El?",
+    "options": ["Copiilor lui Israel", "Egiptenilor", "Moașelor evreilor", "Preoților lui Ietro"],
+    "correct": 2
+  },
+  {
+    "question": "Când trebuiau purtate hainele preoțești?",
+    "options": ["Tot timpul", "Când intrau în cort", "Când făceau o slujbă în cort", "În ziua de Sabat"],
+    "correct": 2
+  },
+  {
+    "question": "Câți ani a trăit Levi?",
+    "options": ["127", "117", "137", "110"],
+    "correct": 2
+  },
+  {
+    "question": "Diferența de vârstă între Aaron și Moise a fost de:",
+    "options": ["10 ani", "7 ani", "3 ani", "5 ani"],
+    "correct": 2
+  },
+  {
+    "question": "Prin cine a izbăvit Dumnezeu pe evrei?",
+    "options": ["Aaron", "Moise", "Iosua", "Îngerul Morții"],
+    "correct": 1
+  },
+  {
+    "question": "Cât trebuiau să dea cei de peste 20 de ani ca dar de răscumpărare?",
+    "options": ["Un siclu", "O jumătate de siclu", "Doi sicli", "Un talant"],
+    "correct": 1
+  },
+  {
+    "question": "Unde scrie „fii cu ochii în patru înaintea îngerului Meu”?",
+    "options": ["În capitolul 3", "În capitolul 19", "În capitolul 23", "În capitolul 33"],
+    "correct": 2
+  },
+  {
+    "question": "Care a fost primul popas după ieșirea din Egipt?",
+    "options": ["Etam", "Mara", "Sucot", "Elim"],
+    "correct": 2
+  },
+  {
+    "question": "Din ce seminție a făcut parte Moise?",
+    "options": ["A lui Levi", "A lui Iuda", "A lui Beniamin", "A lui Ruben"],
+    "correct": 0
+  },
+  {
+    "question": "Cine avea voie să se apropie de Domnul pe muntele Sinai la început?",
+    "options": ["Doar Moise", "Doar Aaron și Moise", "Doar bătrânii", "Tot poporul"],
+    "correct": 0
+  },
+  {
+    "question": "Care a fost prima minune (semn) în fața lui Faraon?",
+    "options": ["Apa în sânge", "Toiagul prefăcut în șarpe", "Păduchii", "Întunericul"],
+    "correct": 1
+  },
+  {
+    "question": "Ce a făcut Moise cu vițelul de aur?",
+    "options": ["L-a ars și l-a făcut cenușă în apă", "L-a îngropat în nisip", "L-a dat înapoi lui Aaron", "L-a spart cu ciocanul"],
+    "correct": 0
+  },
+  {
+    "question": "Câte zile trebuia poporul să se sfințească înainte de darea Legii?",
+    "options": ["Două zile", "Trei zile", "Șapte zile", "40 de zile"],
+    "correct": 0
+  },
+  {
+    "question": "Completează: „Domnul va binecuvânta...”",
+    "options": ["Țara", "Pâinea și apele", "Hainele", "Casele voastre"],
+    "correct": 1
+  },
+  {
+    "question": "Proorocița din Israel care a cântat la instrument a fost:",
+    "options": ["Debora", "Maria, sora lui Moise", "Hulda", "Estera"],
+    "correct": 1
+  },
+  {
+    "question": "Cine a murit în timpul ultimei urgii în Egipt?",
+    "options": ["Întâiul născut al lui Faraon", "Întâiul născut al celui din temniță", "Întâiul născut al dobitoacelor", "Toți întâii-născuți menționați mai sus"],
+    "correct": 3
+  },
+  {
+    "question": "Cartea Exodului ne spune că, după darea Legii pe Sinai, Dumnezeu le-a permis unor oameni să-L vadă. Cine au fost aceștia?",
+    "options": ["Moise și Aaron", "Nadab și Abihu", "Moise, Aaron, fiii lui și cei 70 de bătrâni", "Tot poporul Israel"],
+    "correct": 2
+  },
+  {
+    "question": "Ce pedeapsă trebuia aplicată celor care se atingeau de munte, la darea Legii?",
+    "options": ["Să fie uciși cu pietre sau străpunși cu săgeți", "Să fie scoși din tabără șapte zile", "Să plătească un siclu de argint", "Să fie vânduți ca robi"],
+    "correct": 0
+  },
+  {
+    "question": "Ce fenomene s-au întâmplat în ziua primirii Legii?",
+    "options": ["Doar o ploaie de foc", "O eclipsă totală", "Tunete, fulgere, nor gros și cutremurarea muntelui", "O furtună de nisip"],
+    "correct": 2
+  },
+  {
+    "question": "La ce fel de munci erau supuși evreii?",
+    "options": ["Păstoritul oilor lui Faraon", "Lut, cărămizi și tot felul de munci de pe câmp", "Construcția de corăbii", "Comerțul cu mirodenii"],
+    "correct": 1
+  },
+  {
+    "question": "De ce nu este bine să primim daruri la judecată?",
+    "options": ["Pentru că darurile orbesc vederea și sucesc dreptatea", "Pentru că sunt prea greu de transportat", "Aduc mânia poporului", "Nu există nicio interdicție"],
+    "correct": 0
+  },
+  {
+    "question": "Cum a reacționat Moise la vederea vițelului de aur?",
+    "options": ["A început să cânte cu poporul", "S-a mâniat, a sfărâmat tablele și a ars vițelul", "S-a întors imediat în Madian", "A cerut scuze Faraonului"],
+    "correct": 1
+  },
+  {
+    "question": "Pe cine a chemat Faraon când a văzut toiagul prefăcut în șarpe?",
+    "options": ["Pe soldați", "Pe moașele evreilor", "Pe înțelepții și vrăjitorii Egiptului", "Pe bătrânii lui Israel"],
+    "correct": 2
+  },
+  {
+    "question": "După ce criterii a ales Moise căpeteniile peste popor?",
+    "options": ["Oameni destoinici, cu frică de Dumnezeu și fără lăcomie", "Cei mai bogați oameni din tabără", "Cei mai tineri și puternici", "Doar pe fiii lui Aaron"],
+    "correct": 0
+  },
+  {
+    "question": "Câți oameni s-au suit pe vârful dealului în timpul luptei cu Amalec?",
+    "options": ["Doar Moise", "Doi (Aaron și Hur)", "Trei (Moise, Aaron și Hur)", "Toți bătrânii poporului"],
+    "correct": 2
+  },
+  {
+    "question": "La ce urgie a cerut Faraon pentru prima dată lui Moise să se roage pentru el?",
+    "options": ["La prima urgie (apa în sânge)", "La urgia cu broaștele (prima cerere)", "La urgia a 10-a", "La urgia cu păduchii"],
+    "correct": 1
+  },
+  {
+    "question": "Unde a spus Domnul să tăbărască evreii prima dată după ieșirea din Egipt?",
+    "options": ["Direct în Canaan", "La Muntele Sinai", "În Madian", "Pihahirot, între Migdol și mare"],
+    "correct": 3
+  }
+]
