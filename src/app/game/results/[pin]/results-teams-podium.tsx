@@ -24,11 +24,13 @@ export function ResultsTeamsPodium({
   teams,
   ctaHref,
   ctaLabel,
+  adminStatsHref,
 }: {
   pin: string;
   teams: TeamLeaderboardRow[];
   ctaHref: string;
   ctaLabel: string;
+  adminStatsHref: string | null;
 }) {
   const reduceMotion = useReducedMotion();
   const sorted = useMemo(() => [...teams].sort(byScoreThenName), [teams]);
@@ -218,6 +220,14 @@ export function ResultsTeamsPodium({
                 >
                   {ctaLabel}
                 </Link>
+                {adminStatsHref ? (
+                  <Link
+                    href={adminStatsHref}
+                    className="rounded-2xl bg-[#f59e0b] px-8 py-3 text-center text-sm font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    Statistici
+                  </Link>
+                ) : null}
               </nav>
             </motion.div>
           </>

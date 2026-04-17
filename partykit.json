@@ -1,0 +1,6 @@
+{
+  "$schema": "https://www.partykit.io/schema.json",
+  "name": "kahoot-live",
+  "main": "party/server.ts"
+}
+

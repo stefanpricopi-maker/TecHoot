@@ -14,6 +14,7 @@ type ResultsPodiumProps = {
   players: Player[];
   ctaHref: string;
   ctaLabel: string;
+  adminStatsHref: string | null;
 };
 
 function byScoreThenJoined(a: Player, b: Player): number {
@@ -23,7 +24,13 @@ function byScoreThenJoined(a: Player, b: Player): number {
   return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
 }
 
-export function ResultsPodium({ pin, players, ctaHref, ctaLabel }: ResultsPodiumProps) {
+export function ResultsPodium({
+  pin,
+  players,
+  ctaHref,
+  ctaLabel,
+  adminStatsHref,
+}: ResultsPodiumProps) {
   const reduceMotion = useReducedMotion();
   const sorted = [...players].sort(byScoreThenJoined);
   const first = sorted[0];
@@ -223,6 +230,14 @@ export function ResultsPodium({ pin, players, ctaHref, ctaLabel }: ResultsPodium
               >
                 {ctaLabel}
               </Link>
+              {adminStatsHref ? (
+                <Link
+                  href={adminStatsHref}
+                  className="rounded-2xl bg-[#f59e0b] px-8 py-3 text-center text-sm font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  Statistici
+                </Link>
+              ) : null}
             </nav>
           </motion.div>
         </>

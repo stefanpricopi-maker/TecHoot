@@ -85,7 +85,7 @@ function LeaderboardBarChart({
   rows,
   maxBars = 5,
 }: {
-  rows: { id: string; display_name: string; score: number }[];
+  rows: { id: string; display_name: string; score: number; correct_streak?: number }[];
   maxBars?: number;
 }) {
   const top = rows.slice(0, maxBars);
@@ -105,8 +105,34 @@ function LeaderboardBarChart({
                 <span className="flex w-10 shrink-0 items-center justify-center tabular-nums text-sm font-extrabold text-gray-300">
                   {i === 0 ? <span aria-hidden>👑</span> : `${i + 1}.`}
                 </span>
-                <span className="truncate font-extrabold tracking-tight text-gray-100">
-                  {r.display_name}
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate font-extrabold tracking-tight text-gray-100">
+                    {r.display_name}
+                  </span>
+                  {(() => {
+                    const s = Math.floor(Number(r.correct_streak ?? 0));
+                    const isOnFire = s === 3 || s === 5 || s >= 10;
+                    if (!isOnFire) return null;
+                    const label = s >= 10 ? "On Fire x10+" : `On Fire x${s}`;
+                    return (
+                      <motion.span
+                        key={`fire-${r.id}-${s}`}
+                        initial={{ opacity: 0, scale: 0.9, y: -2 }}
+                        animate={{ opacity: 1, scale: [1, 1.06, 1], y: 0 }}
+                        transition={{
+                          duration: 0.7,
+                          repeat: Infinity,
+                          repeatType: "mirror",
+                          ease: "easeInOut",
+                        }}
+                        className="shrink-0 rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] font-extrabold text-amber-200 shadow-[0_0_0_1px_rgba(245,158,11,0.25)_inset]"
+                        aria-label={label}
+                        title={label}
+                      >
+                        🔥
+                      </motion.span>
+                    );
+                  })()}
                 </span>
               </span>
               <span className="font-mono text-sm font-extrabold tabular-nums text-[#f59e0b]">
@@ -183,7 +209,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
   } | null>(null);
 
   const [leaderTop, setLeaderTop] = useState<
-    { id: string; display_name: string; score: number }[]
+    { id: string; display_name: string; score: number; correct_streak?: number }[]
   >([]);
   const [teamMode, setTeamMode] = useState(false);
   const [teamTop, setTeamTop] = useState<
@@ -201,6 +227,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
     score: number;
     team_id?: string | null;
     teams?: { name?: string | null } | null;
+    correct_streak?: number | null;
   };
 
   const [showIntermission, setShowIntermission] = useState(false);
@@ -283,7 +310,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
       const supabase = createSupabaseClient();
       const { data } = await supabase
         .from("players")
-        .select("id, display_name, score, team_id, teams(name)")
+        .select("id, display_name, score, correct_streak, team_id, teams(name)")
         .eq("session_id", sid)
         .order("score", { ascending: false })
         .limit(10);
@@ -293,6 +320,10 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
           id: p.id,
           display_name: p.display_name ?? "—",
           score: p.score ?? 0,
+          correct_streak:
+            typeof p.correct_streak === "number" && Number.isFinite(p.correct_streak)
+              ? Math.max(0, Math.floor(p.correct_streak))
+              : 0,
           team_id: (p as any).team_id ?? null,
           teams: (p as any).teams ?? null,
         })),
@@ -340,7 +371,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
       const [playersRes, respRes] = await Promise.all([
         supabase
           .from("players")
-          .select("id, display_name, score, joined_at")
+          .select("id, display_name, score, correct_streak, joined_at")
           .eq("session_id", sid),
         supabase
           .from("round_responses")
@@ -353,6 +384,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
         id: string;
         display_name: string | null;
         score: number | null;
+        correct_streak?: number | null;
         joined_at: string;
       }>;
       const rlist = (respRes.data ?? []) as Array<{
@@ -372,6 +404,10 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
           id: p.id,
           display_name: p.display_name ?? "—",
           score: Math.max(0, cur - delta),
+          correct_streak:
+            typeof p.correct_streak === "number" && Number.isFinite(p.correct_streak)
+              ? Math.max(0, Math.floor(p.correct_streak))
+              : 0,
           joined_at: p.joined_at,
         };
       });
@@ -381,7 +417,16 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
         return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
       });
 
-      setLeaderTop(adjusted.slice(0, 10).map((p) => ({ id: p.id, display_name: p.display_name, score: p.score })));
+      setLeaderTop(
+        adjusted
+          .slice(0, 10)
+          .map((p) => ({
+            id: p.id,
+            display_name: p.display_name,
+            score: p.score,
+            correct_streak: p.correct_streak,
+          })),
+      );
       if (teamModeRef.current) {
         await refreshTeamTop(sid);
       }
@@ -778,7 +823,7 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
           .eq("session_id", sessionId),
         supabase
           .from("players")
-          .select("id, display_name, score, team_id, teams(name)")
+          .select("id, display_name, score, correct_streak, team_id, teams(name)")
           .eq("session_id", sessionId)
           .order("score", { ascending: false })
           .limit(10),
@@ -839,6 +884,10 @@ export function HostGameClient({ normalizedPin }: HostGameClientProps) {
           id: p.id,
           display_name: p.display_name ?? "—",
           score: p.score ?? 0,
+          correct_streak:
+            typeof (p as any).correct_streak === "number" && Number.isFinite((p as any).correct_streak)
+              ? Math.max(0, Math.floor((p as any).correct_streak))
+              : 0,
         })),
       );
 

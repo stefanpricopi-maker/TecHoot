@@ -67,6 +67,7 @@ export default async function GameResultsPage({ params }: PageProps) {
   const isAdmin = Boolean(cookieStore.get(ADMIN_SESSION_KEY_COOKIE)?.value);
   const ctaHref = isAdmin ? "/host" : "/join";
   const ctaLabel = isAdmin ? "Generează joc nou" : "Joacă din nou";
+  const adminStatsHref = `/game/summary/${encodeURIComponent(pin)}`;
 
   if (teamMode) {
     const { data: rows, error: playersErr } = await supabase
@@ -104,6 +105,7 @@ export default async function GameResultsPage({ params }: PageProps) {
         teams={teams}
         ctaHref={ctaHref}
         ctaLabel={ctaLabel}
+        adminStatsHref={isAdmin ? adminStatsHref : null}
       />
     );
   }
@@ -133,6 +135,7 @@ export default async function GameResultsPage({ params }: PageProps) {
       players={players}
       ctaHref={ctaHref}
       ctaLabel={ctaLabel}
+      adminStatsHref={isAdmin ? adminStatsHref : null}
     />
   );
 }

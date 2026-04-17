@@ -66,6 +66,24 @@ export type HardestQuestionAdminResult =
     }
   | { ok: false; error: string };
 
+export type QuestionAccuracyRow = {
+  questionIndex: number;
+  prompt: string;
+  reference: string | null;
+  answered: number;
+  correct: number;
+  wrong: number;
+  correctPct: number;
+};
+
+export type QuestionAccuracySummaryAdminResult =
+  | {
+      ok: true;
+      easiest: QuestionAccuracyRow[];
+      hardest: QuestionAccuracyRow[];
+    }
+  | { ok: false; error: string };
+
 export type ListQuizzesResult =
   | { ok: true; quizzes: { id: string; title: string | null }[] }
   | { ok: false; error: string };
@@ -2490,6 +2508,129 @@ export async function publishFinalResults(
 
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+export async function getQuestionAccuracySummaryAdmin(
+  sessionId: string,
+): Promise<QuestionAccuracySummaryAdminResult> {
+  const auth = await requireAdminForSession(sessionId);
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data: sess, error: sErr } = await supabase
+      .from("sessions")
+      .select(
+        "id, quiz_id, current_question_index, question_count, question_seed, randomize_questions, pin",
+      )
+      .eq("id", sessionId)
+      .maybeSingle();
+    if (sErr) return { ok: false, error: sErr.message };
+    if (!sess?.quiz_id) return { ok: false, error: "Sesiune fără quiz." };
+
+    const ordered = await fetchOrderedQuizQuestions(
+      supabase,
+      sess.quiz_id as string,
+    );
+    const seedVal = sess.question_seed as number | null | undefined;
+    const seed =
+      typeof seedVal === "number" && Number.isFinite(seedVal) && seedVal > 0
+        ? Math.floor(seedVal)
+        : hashStringToSeed(String((sess as any).pin ?? sessionId));
+    const randomize = (sess.randomize_questions as boolean | null) ?? true;
+    const shuffled = randomize ? seededShuffle(ordered, seed) : ordered;
+
+    const rawLimit = sess.question_count as number | null | undefined;
+    const limit =
+      typeof rawLimit === "number" && Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(shuffled.length, Math.floor(rawLimit))
+        : shuffled.length;
+    const questions = shuffled.slice(0, limit);
+
+    const { data: rows, error: rErr } = await supabase
+      .from("round_responses")
+      .select("question_index, selected_option_index, selected_option_indices")
+      .eq("session_id", sessionId);
+    if (rErr) return { ok: false, error: rErr.message };
+
+    const byQ = new Map<number, { answered: number; correct: number }>();
+    for (const r of (rows ?? []) as any[]) {
+      const qIdx = Math.floor(Number(r.question_index ?? -1));
+      if (!Number.isFinite(qIdx) || qIdx < 0 || qIdx >= questions.length) continue;
+      const q = questions[qIdx]!;
+
+      let correct = false;
+      if (q.type === "multi_select") {
+        const selRaw = r.selected_option_indices;
+        const arr = Array.isArray(selRaw) ? selRaw : [];
+        const selected = new Set<number>();
+        for (const v of arr) {
+          const i = typeof v === "number" ? Math.floor(v) : -1;
+          if (i >= 0 && i < q.options.length) selected.add(i);
+        }
+        const corr = new Set<number>(
+          (q.correctAnswerIndices ?? []).map((x) => Math.floor(Number(x))),
+        );
+        if (corr.size > 0 && selected.size === corr.size) {
+          correct = true;
+          for (const c of corr) {
+            if (!selected.has(c)) {
+              correct = false;
+              break;
+            }
+          }
+        }
+      } else {
+        const i = Number(r.selected_option_index ?? -1);
+        correct = Number.isFinite(i) && Math.floor(i) === q.correctAnswerIndex;
+      }
+
+      const cur = byQ.get(qIdx) ?? { answered: 0, correct: 0 };
+      cur.answered += 1;
+      if (correct) cur.correct += 1;
+      byQ.set(qIdx, cur);
+    }
+
+    const list: QuestionAccuracyRow[] = [];
+    for (let qIdx = 0; qIdx < questions.length; qIdx++) {
+      const q = questions[qIdx]!;
+      const agg = byQ.get(qIdx) ?? { answered: 0, correct: 0 };
+      const answered = agg.answered;
+      const correctN = agg.correct;
+      const wrong = Math.max(0, answered - correctN);
+      const correctPct =
+        answered > 0 ? Math.round((correctN / answered) * 100) : 0;
+      list.push({
+        questionIndex: qIdx,
+        prompt: q.text,
+        reference: (q as any).reference ?? null,
+        answered,
+        correct: correctN,
+        wrong,
+        correctPct,
+      });
+    }
+
+    const withAnswers = list.filter((r) => r.answered > 0);
+    const hardest = [...withAnswers]
+      .sort((a, b) => {
+        if (a.correctPct !== b.correctPct) return a.correctPct - b.correctPct;
+        return b.answered - a.answered;
+      })
+      .slice(0, 3);
+
+    const easiest = [...withAnswers]
+      .sort((a, b) => {
+        if (a.correctPct !== b.correctPct) return b.correctPct - a.correctPct;
+        return b.answered - a.answered;
+      })
+      .slice(0, 3);
+
+    return { ok: true, easiest, hardest };
+  } catch (e) {
+    const msg = e instanceof Error && e.message ? e.message : "Eroare statistici.";
+    return { ok: false, error: msg };
+  }
 }
 
 export async function getHostCorrectOptionIndex(
