@@ -7,11 +7,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { animate } from "framer-motion/dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
-import { submitAnswer } from "@/app/actions/game-actions";
+import {
+  activatePowerUp,
+  getMyPowerUps,
+  joinTeam,
+  listTeamsForPin,
+  pickPowerUpReward,
+  submitAnswer,
+  useFiftyFifty,
+} from "@/app/actions/game-actions";
 import type { PublicQuizQuestionData } from "@/lib/quiz-db";
 import { fetchOrderedQuizQuestionsPublic } from "@/lib/quiz-db";
 import { hashStringToSeed, seededShuffle } from "@/lib/seeded-shuffle";
 import { LS_PLAYER_ID_KEY } from "@/lib/player-storage";
+import { createGamePartySocket } from "@/lib/partykit";
 import { createSupabaseClient } from "@/lib/supabase";
 import { useGameAudio } from "@/hooks/useGameAudio";
 import type { GameSession } from "@/types/game";
@@ -70,7 +79,8 @@ function AnimatedScore({
     prevRef.current = value;
 
     if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) {
-      setDisplay(to);
+      // Avoid synchronous setState in effects (eslint rule); defer one tick.
+      Promise.resolve().then(() => setDisplay(to));
       return;
     }
 
@@ -117,10 +127,37 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   );
   const [sessionSeed, setSessionSeed] = useState<number | null>(null);
   const [questionStartedAt, setQuestionStartedAt] = useState<string | null>(null);
+  const [resultsPublishedAt, setResultsPublishedAt] = useState<string | null>(null);
+  const [streak, setStreak] = useState(0);
+  const [pendingReward, setPendingReward] = useState(false);
+  const [inv, setInv] = useState<{
+    fifty_fifty: number;
+    shield: number;
+    double_points: number;
+  }>({
+    fifty_fifty: 0,
+    shield: 0,
+    double_points: 0,
+  });
+  const [activePu, setActivePu] = useState<{
+    type: "fifty_fifty" | "shield" | "double_points" | null;
+    uses: number;
+    questionIndex: number | null;
+  }>({ type: null, uses: 0, questionIndex: null });
+  const [keep50, setKeep50] = useState<[number, number] | null>(null);
   const [randomizeQuestions, setRandomizeQuestions] = useState(true);
   const [pickedOption, setPickedOption] = useState<number | null>(null);
+  const [pickedOptions, setPickedOptions] = useState<number[]>([]);
+  const [submitBusy, setSubmitBusy] = useState(false);
+  const [needsTeam, setNeedsTeam] = useState(false);
+  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
+  const [teamErr, setTeamErr] = useState<string | null>(null);
+  const [teamBusy, setTeamBusy] = useState(false);
+  const [teamName, setTeamName] = useState<string | null>(null);
   const [rankPos, setRankPos] = useState<number | null>(null);
   const [rankTotal, setRankTotal] = useState<number | null>(null);
+  const [rankGapToNext, setRankGapToNext] = useState<number | null>(null);
+  const [rankNextScore, setRankNextScore] = useState<number | null>(null);
   const [leaderTop, setLeaderTop] = useState<
     { id: string; display_name: string; score: number }[]
   >([]);
@@ -133,6 +170,11 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   >({});
   const [leaderLayoutReady, setLeaderLayoutReady] = useState(false);
   const [intermissionLeft, setIntermissionLeft] = useState<number | null>(null);
+
+  const reactionWsRef = useRef<ReturnType<typeof createGamePartySocket> | null>(
+    null,
+  );
+  const reactionCooldownUntilRef = useRef<number>(0);
 
   type LeaderTopRow = { id: string; display_name: string | null; score: number };
 
@@ -194,7 +236,7 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
     const { data } = await supabase
       .from("sessions")
       .select(
-        "id, status, current_question_index, quiz_id, question_count, question_seed, randomize_questions, current_question_started_at",
+        "id, status, current_question_index, quiz_id, question_count, question_seed, randomize_questions, current_question_started_at, team_mode, results_published_at",
       )
       .eq("pin", normalizedPin)
       .maybeSingle();
@@ -208,13 +250,49 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
     setRoundOutcome("loading");
     setPointsEarned(null);
     setPickedOption(null);
+    setPickedOptions([]);
+    setSubmitBusy(false);
     setSessionQuestionLimit((data.question_count as number | null) ?? null);
     setSessionSeed((data.question_seed as number | null) ?? null);
     setRandomizeQuestions((data.randomize_questions as boolean | null) ?? true);
     setQuestionStartedAt(
       (data.current_question_started_at as string | null) ?? null,
     );
+    setResultsPublishedAt((data as any).results_published_at ?? null);
     setTimeUp(false);
+    const tm = Boolean((data as any).team_mode ?? false);
+    if (tm) {
+      const playerId =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem(LS_PLAYER_ID_KEY)
+          : null;
+      if (playerId) {
+        const { data: pl } = await supabase
+          .from("players")
+          .select("team_id, teams(name)")
+          .eq("id", playerId)
+          .maybeSingle();
+        setNeedsTeam(!pl?.team_id);
+        setTeamName(
+          pl?.team_id ? String((pl as any).teams?.name ?? "") || null : null,
+        );
+      } else {
+        setNeedsTeam(true);
+        setTeamName(null);
+      }
+      const tRes = await listTeamsForPin(normalizedPin);
+      if (tRes.ok) {
+        setTeams(tRes.teams);
+        setTeamErr(null);
+      } else {
+        setTeamErr(tRes.error);
+      }
+    } else {
+      setNeedsTeam(false);
+      setTeams([]);
+      setTeamErr(null);
+      setTeamName(null);
+    }
     const qz = data.quiz_id as string | null;
     if (qz) {
       const qs = await fetchOrderedQuizQuestionsPublic(supabase, qz);
@@ -222,7 +300,50 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
     } else {
       setQuestions([]);
     }
+
+    const playerId =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(LS_PLAYER_ID_KEY)
+        : null;
+    if (playerId) {
+      const pu = await getMyPowerUps(normalizedPin, playerId);
+      if (pu.ok) {
+        setStreak(pu.streak);
+        setPendingReward(pu.pendingReward);
+        setInv(pu.powerups);
+        setActivePu(pu.active);
+      }
+    }
   }, [normalizedPin]);
+
+  const pickTeam = useCallback(
+    async (teamId: string) => {
+      if (!teamId) return;
+      const playerId =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem(LS_PLAYER_ID_KEY)
+          : null;
+      if (!playerId) {
+        setTeamErr("Lipsește jucătorul. Re-join la sesiune.");
+        return;
+      }
+      setTeamBusy(true);
+      setTeamErr(null);
+      try {
+        const res = await joinTeam(normalizedPin, playerId, teamId);
+        if (!res.ok) {
+          setTeamErr(res.error);
+          return;
+        }
+        setNeedsTeam(false);
+        const picked = teams.find((t) => t.id === teamId);
+        setTeamName(picked?.name ?? null);
+      } finally {
+        setTeamBusy(false);
+      }
+    },
+    [normalizedPin, teams],
+  );
 
   const refreshTop5 = useCallback(
     async (sid: string) => {
@@ -301,6 +422,31 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  // PartyKit: live reactions channel (very small payload; no DB writes).
+  useEffect(() => {
+    const connId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `pl-${Math.random().toString(16).slice(2)}-${Date.now()}`;
+    const ws = createGamePartySocket({ pin: normalizedPin, connectionId: connId });
+    reactionWsRef.current = ws;
+    return () => {
+      reactionWsRef.current = null;
+      ws.close();
+    };
+  }, [normalizedPin]);
+
+  const sendReaction = useCallback((emoji: string) => {
+    const now = Date.now();
+    // Client-side throttle to keep UI/network smooth.
+    if (now < reactionCooldownUntilRef.current) return;
+    reactionCooldownUntilRef.current = now + 250;
+    const ws = reactionWsRef.current;
+    if (!ws) return;
+    // PartySocket buffers messages until open; don't block on readyState.
+    ws.send(JSON.stringify({ type: "reaction", emoji, ts: now }));
+  }, []);
 
   useEffect(() => {
     const prev = prevLeaderRanksRef.current;
@@ -391,6 +537,7 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
           setSessionSeed(row.question_seed ?? null);
           setRandomizeQuestions(row.randomize_questions ?? true);
           setQuestionStartedAt(row.current_question_started_at ?? null);
+          setResultsPublishedAt((row as any).results_published_at ?? null);
           if (row.status === "finished") {
             setAnswered(true);
             setRoundOutcome("loading");
@@ -401,6 +548,8 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
             setPointsEarned(null);
             setTimeUp(false);
             setPickedOption(null);
+            setPickedOptions([]);
+            setSubmitBusy(false);
             if (sessionIdRef.current) {
               void refreshTop5(sessionIdRef.current);
             }
@@ -421,10 +570,32 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
   }, [normalizedPin, refreshTop5]);
 
   useEffect(() => {
-    if (status === "finished") {
+    if (status === "finished" && resultsPublishedAt) {
       router.replace(`/game/results/${encodeURIComponent(normalizedPin)}`);
     }
-  }, [status, router, normalizedPin]);
+  }, [status, resultsPublishedAt, router, normalizedPin]);
+
+  // Refresh streak/powerups when results are shown (reward may appear).
+  useEffect(() => {
+    if (status !== "showing_results") {
+      setKeep50(null);
+      return;
+    }
+    const playerId =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(LS_PLAYER_ID_KEY)
+        : null;
+    if (!playerId) return;
+    void (async () => {
+      const pu = await getMyPowerUps(normalizedPin, playerId);
+      if (pu.ok) {
+        setStreak(pu.streak);
+        setPendingReward(pu.pendingReward);
+        setInv(pu.powerups);
+        setActivePu(pu.active);
+      }
+    })();
+  }, [status, normalizedPin]);
 
   useEffect(() => {
     if (status !== "question_active") {
@@ -501,6 +672,8 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
       if (!sid) {
         setRankPos(null);
         setRankTotal(null);
+        setRankGapToNext(null);
+        setRankNextScore(null);
         return;
       }
 
@@ -519,10 +692,19 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
       setRankTotal(list.length);
       const idx = list.findIndex((p) => p.id === id);
       setRankPos(idx >= 0 ? idx + 1 : null);
+      if (idx > 0) {
+        const myScore = Number(list[idx]?.score ?? 0);
+        const nextScore = Number(list[idx - 1]?.score ?? 0);
+        setRankNextScore(nextScore);
+        setRankGapToNext(Math.max(0, nextScore - myScore));
+      } else {
+        setRankGapToNext(null);
+        setRankNextScore(null);
+      }
     })();
   }, [status, questionIndex, normalizedPin, shuffledQuestions, sessionQuestionLimit]);
 
-  const pick = useCallback(
+  const pickSingle = useCallback(
     async (optionIndex: number) => {
       if (status !== "question_active") {
         return;
@@ -556,32 +738,201 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
         setBusyIndex(null);
       }
     },
-    [answered, normalizedPin, status, currentQ],
+    [normalizedPin, status, currentQ],
   );
 
-  if (status === "finished") {
+  const submitMulti = useCallback(async () => {
+    if (status !== "question_active") return;
+    if (!currentQ || currentQ.type !== "multi_select") return;
+    if (pickedOptions.length < 1) return;
+
+    const playerId =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(LS_PLAYER_ID_KEY)
+        : null;
+    const qid = currentQ.id;
+    if (!playerId || !qid) {
+      setError("Lipsește jucătorul sau întrebarea.");
+      return;
+    }
+
+    setError(null);
+    setSubmitBusy(true);
+    try {
+      const result = await submitAnswer(
+        normalizedPin,
+        playerId,
+        qid,
+        pickedOptions,
+      );
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setAnswered(true);
+    } finally {
+      setSubmitBusy(false);
+    }
+  }, [status, currentQ, pickedOptions, normalizedPin]);
+
+  const doPickReward = useCallback(
+    async (type: "fifty_fifty" | "shield" | "double_points") => {
+      const playerId =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem(LS_PLAYER_ID_KEY)
+          : null;
+      if (!playerId) return;
+      const res = await pickPowerUpReward({ pin: normalizedPin, playerId, type });
+      if (res.ok) {
+        const pu = await getMyPowerUps(normalizedPin, playerId);
+        if (pu.ok) {
+          setStreak(pu.streak);
+          setPendingReward(pu.pendingReward);
+          setInv(pu.powerups);
+          setActivePu(pu.active);
+        }
+      }
+    },
+    [normalizedPin],
+  );
+
+  const doActivate = useCallback(
+    async (type: "shield" | "double_points") => {
+      if (status !== "question_active") return;
+      const playerId =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem(LS_PLAYER_ID_KEY)
+          : null;
+      if (!playerId) return;
+      const res = await activatePowerUp({
+        pin: normalizedPin,
+        playerId,
+        type,
+        questionIndex,
+      });
+      if (res.ok) {
+        const pu = await getMyPowerUps(normalizedPin, playerId);
+        if (pu.ok) {
+          setInv(pu.powerups);
+          setActivePu(pu.active);
+        }
+      }
+    },
+    [normalizedPin, questionIndex, status],
+  );
+
+  const doFifty = useCallback(async () => {
+    if (status !== "question_active") return;
+    if (!currentQ || currentQ.type !== "single" || currentQ.options.length !== 4) return;
+    const playerId =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem(LS_PLAYER_ID_KEY)
+        : null;
+    if (!playerId) return;
+    const res = await useFiftyFifty({ pin: normalizedPin, playerId, questionId: currentQ.id });
+    if (res.ok) {
+      setKeep50(res.keep);
+      const pu = await getMyPowerUps(normalizedPin, playerId);
+      if (pu.ok) setInv(pu.powerups);
+    }
+  }, [status, currentQ, normalizedPin]);
+
+  if (status === "finished" && !resultsPublishedAt) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-8 px-6 text-center text-gray-100">
         <h1 className="text-3xl font-extrabold tracking-tight text-[#f59e0b]">
-          Gata!
+          Joc terminat
         </h1>
+        <p className="max-w-md text-sm text-gray-400">
+          Așteaptă ca Adminul să publice clasamentul.
+        </p>
         <button
           type="button"
-          onClick={() =>
-            router.push(
-              `/game/results/${encodeURIComponent(normalizedPin)}`,
-            )
-          }
+          onClick={() => void hydrate()}
           className="min-h-12 rounded-2xl bg-[#f59e0b] px-8 py-3 font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
         >
-          Vezi clasamentul
+          Reîncarcă
         </button>
+      </div>
+    );
+  }
+
+  if (pendingReward) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6 text-center text-gray-100">
+        <h1 className="text-3xl font-extrabold tracking-tight text-[#f59e0b]">
+          Power-Up câștigat!
+        </h1>
+        <p className="max-w-md text-sm text-gray-400">
+          Ai streak de <span className="font-extrabold text-gray-100">3</span>{" "}
+          răspunsuri corecte. Alege un avantaj.
+        </p>
+        <div className="w-full max-w-md space-y-3">
+          <button
+            type="button"
+            onClick={() => void doPickReward("fifty_fifty")}
+            className="min-h-12 w-full rounded-2xl bg-[#1a2236] px-5 text-left text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+          >
+            50/50 — elimină două variante greșite
+          </button>
+          <button
+            type="button"
+            onClick={() => void doPickReward("shield")}
+            className="min-h-12 w-full rounded-2xl bg-[#1a2236] px-5 text-left text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+          >
+            Scut — nu pierzi puncte la următoarea greșeală
+          </button>
+          <button
+            type="button"
+            onClick={() => void doPickReward("double_points")}
+            className="min-h-12 w-full rounded-2xl bg-[#1a2236] px-5 text-left text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+          >
+            Double Points — punctaj dublu la următoarea întrebare
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (needsTeam) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6 text-center text-gray-100">
+        <h1 className="text-3xl font-extrabold tracking-tight text-[#f59e0b]">
+          Alege echipa
+        </h1>
+        {teamErr ? (
+          <p className="max-w-md text-sm text-red-300">{teamErr}</p>
+        ) : (
+          <p className="max-w-md text-sm text-gray-400">
+            Sesiunea este în team mode. Selectează o echipă ca să continui.
+          </p>
+        )}
+        <div className="w-full max-w-md space-y-3">
+          {teams.length === 0 ? (
+            <p className="text-sm text-gray-400">
+              Nu există încă echipe. Așteaptă ca gazda să le creeze.
+            </p>
+          ) : (
+            teams.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                disabled={teamBusy}
+                onClick={() => void pickTeam(t.id)}
+                className="min-h-12 w-full rounded-2xl border border-gray-700/50 bg-[#1a2236] px-5 text-left text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
+              >
+                {teamBusy ? "…" : t.name}
+              </button>
+            ))
+          )}
+        </div>
         <button
           type="button"
-          onClick={() => router.push("/")}
-          className="min-h-12 rounded-2xl border border-gray-700/50 bg-[#1a2236] px-8 py-3 font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
+          disabled={teamBusy}
+          onClick={() => void hydrate()}
+          className="min-h-12 rounded-2xl bg-[#f59e0b] px-8 py-3 text-sm font-bold text-[#0a0f1e] disabled:opacity-50"
         >
-          Acasă
+          Reîncarcă
         </button>
       </div>
     );
@@ -685,6 +1036,22 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
                   {Math.max(0, effectiveLen - (questionIndex + 1))}
                 </span>
               </p>
+
+              {rankPos != null && rankTotal != null ? (
+                <div className="mt-2 rounded-2xl bg-white/10 px-4 py-3 text-sm font-semibold">
+                  <p className="tabular-nums">
+                    Poziția ta: <span className="font-extrabold">#{rankPos}</span> /{" "}
+                    {rankTotal}
+                  </p>
+                  {rankPos > 5 && rankGapToNext != null ? (
+                    <p className="mt-1 tabular-nums opacity-90">
+                      Mai ai{" "}
+                      <span className="font-extrabold">{rankGapToNext}</span>{" "}
+                      puncte până la următorul clasat.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </motion.div>
           )}
         </AnimatePresence>
@@ -802,11 +1169,19 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
 
   // `effectiveLen` + `currentQ` sunt calculate mai sus (memo) pentru a fi folosite și în callback-uri.
   const optionCount = currentQ?.options.length ?? 0;
+  const canUseFifty =
+    status === "question_active" &&
+    !answered &&
+    !timeUp &&
+    currentQ?.type === "single" &&
+    optionCount === 4 &&
+    inv.fifty_fifty > 0 &&
+    keep50 == null;
 
   return (
     <div
       onPointerDown={audio.unlocked ? undefined : audio.unlock}
-      className={`min-h-dvh bg-[#0a0f1e]/40 p-6 backdrop-blur-sm sm:p-8 ${
+      className={`min-h-dvh bg-[#0a0f1e]/40 p-4 backdrop-blur-sm sm:p-8 ${
         isHurry
           ? "relative before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(ellipse_at_center,_rgba(239,68,68,0.22)_0%,_rgba(10,15,30,0)_62%)] before:animate-pulse"
           : ""
@@ -819,14 +1194,24 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
           transition={{ duration: 0.25 }}
-          className="mx-auto mb-6 max-w-lg rounded-2xl border border-white/12 bg-[#1a2236]/35 p-6 shadow-[0_30px_90px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.14)] backdrop-blur-2xl sm:mb-8 sm:max-w-xl sm:p-8"
+          className="mx-auto mb-4 max-w-lg rounded-2xl border border-white/12 bg-[#1a2236]/35 p-4 shadow-[0_30px_90px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.14)] backdrop-blur-2xl sm:mb-8 sm:max-w-xl sm:p-8"
         >
           <div className="flex-1">
-            <p className="text-left text-sm font-semibold text-gray-400">
-              Întrebarea {questionIndex + 1} / {effectiveLen || "—"}
-            </p>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-left text-sm font-semibold text-gray-400">
+                Întrebarea {questionIndex + 1} / {effectiveLen || "—"}
+              </p>
+              <span className="shrink-0 rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-1.5 font-mono text-sm font-extrabold tabular-nums text-[#f59e0b] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+                {timeLeftSeconds ?? "—"}s
+              </span>
+            </div>
+            {teamName ? (
+              <p className="mt-1 text-left text-xs font-semibold text-gray-400">
+                Echipa: <span className="text-gray-200">{teamName}</span>
+              </p>
+            ) : null}
             <p
-              className={`mt-3 whitespace-pre-wrap break-words font-extrabold leading-snug tracking-tight text-gray-100 ${questionTextSizeClass(
+              className={`mt-2 whitespace-pre-wrap break-words font-extrabold leading-snug tracking-tight text-gray-100 ${questionTextSizeClass(
                 currentQ?.text ?? "",
               )}`}
             >
@@ -842,9 +1227,11 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
           transition={{ duration: 0.28 }}
-          className="mx-auto grid max-w-lg grid-cols-2 gap-4 sm:max-w-xl sm:gap-5"
+          className="mx-auto grid max-w-lg grid-cols-2 gap-3 sm:max-w-xl sm:gap-5"
         >
           {KAHOOT_CELLS.map((cell, i) => {
+            const allowedBy50 =
+              keep50 == null ? true : keep50[0] === i || keep50[1] === i;
             const optionLabel =
               currentQ != null && i < optionCount
                 ? (currentQ.options[i] ?? "")
@@ -852,9 +1239,14 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
             const disabled =
               busyIndex !== null ||
               i >= optionCount ||
+              !allowedBy50 ||
               timeUp ||
+              submitBusy ||
               questions === null;
-            const isChosen = pickedOption === i;
+            const isMulti = currentQ?.type === "multi_select";
+            const isChosen = isMulti
+              ? pickedOptions.includes(i)
+              : pickedOption === i;
             const dimOthers = answered && pickedOption != null && !isChosen;
             return (
               <motion.button
@@ -885,7 +1277,14 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
                       },
                     );
                   }
-                  pick(i);
+                  if (isMulti) {
+                    setPickedOptions((prev) => {
+                      if (prev.includes(i)) return prev.filter((x) => x !== i);
+                      return [...prev, i].sort((a, b) => a - b);
+                    });
+                  } else {
+                    pickSingle(i);
+                  }
                 }}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -893,11 +1292,13 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
                 whileHover={
                   disabled ? undefined : { scale: 1.02 }
                 }
-                className={`flex min-h-[9.5rem] flex-col items-center justify-center gap-2 rounded-2xl px-3 py-4 text-5xl shadow-none transition-[box-shadow,opacity] disabled:hover:scale-100 sm:min-h-[11rem] sm:gap-2.5 sm:text-6xl ${cell.className} ${
+                className={`flex min-h-[7.5rem] flex-col items-center justify-center gap-2 rounded-2xl px-3 py-3 text-5xl shadow-none transition-[box-shadow,opacity] disabled:hover:scale-100 sm:min-h-[11rem] sm:gap-2.5 sm:text-6xl ${cell.className} ${
                   isChosen
                     ? "box-border border-4 border-white"
                     : "border-4 border-transparent"
-                } ${dimOthers ? "opacity-45" : ""}`}
+                } ${dimOthers ? "opacity-45" : ""} ${
+                  keep50 != null && !allowedBy50 ? "opacity-25" : ""
+                }`}
               >
                 <span
                   className={`shrink-0 drop-shadow-md ${
@@ -910,7 +1311,7 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
                 >
                   {cell.shape}
                 </span>
-                {optionLabel ? (
+                {optionLabel && (keep50 == null || allowedBy50) ? (
                   <span
                     className={`line-clamp-3 w-full max-w-[95%] text-center text-xs font-bold leading-snug drop-shadow-sm sm:text-sm ${
                       isChosen
@@ -930,8 +1331,63 @@ export function PlayerGameClient({ normalizedPin }: PlayerGameClientProps) {
           })}
         </motion.div>
       </AnimatePresence>
-      <div className="mx-auto mt-5 flex max-w-lg justify-center sm:mt-6 sm:max-w-xl">
-        <div className="rounded-2xl border border-gray-700/50 bg-[#1a2236] px-6 py-3 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+      <div className="mx-auto mt-3 flex max-w-lg flex-col items-center gap-3 sm:mt-6 sm:max-w-xl">
+        <div className="grid w-full grid-cols-3 gap-2 sm:gap-3">
+          {canUseFifty ? (
+            <button
+              type="button"
+              onClick={() => void doFifty()}
+              className="min-h-12 w-full rounded-2xl border border-amber-400/35 bg-amber-400/10 px-3 text-sm font-extrabold text-amber-200 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform active:scale-[0.98]"
+            >
+              50/50 ({inv.fifty_fifty})
+            </button>
+          ) : (
+            <div className="min-h-12" />
+          )}
+
+          {/* Reserved slots for upcoming power-up buttons (shield / double points). */}
+          <div className="min-h-12" />
+          <div className="min-h-12" />
+        </div>
+        <div className="grid w-full grid-cols-4 gap-2 sm:gap-3">
+          {[
+            { emoji: "🔥", label: "🔥 Reacție" },
+            { emoji: "👏", label: "👏 Reacție" },
+            { emoji: "😂", label: "😂 Reacție" },
+            { emoji: "🤯", label: "🤯 Reacție" },
+            { emoji: "😍", label: "😍 Reacție" },
+            { emoji: "😮", label: "😮 Reacție" },
+            { emoji: "😢", label: "😢 Reacție" },
+            { emoji: "😡", label: "😡 Reacție" },
+          ].map((r) => (
+            <button
+              key={r.emoji}
+              type="button"
+              onClick={() => sendReaction(r.emoji)}
+              className="min-h-12 rounded-2xl border border-gray-700/50 bg-[#1a2236] text-2xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] transition-transform active:scale-[0.97]"
+              aria-label={r.label}
+            >
+              {r.emoji}
+            </button>
+          ))}
+        </div>
+        {currentQ?.type === "multi_select" ? (
+          <button
+            type="button"
+            onClick={() => void submitMulti()}
+            disabled={
+              answered ||
+              timeUp ||
+              submitBusy ||
+              busyIndex !== null ||
+              pickedOptions.length < 1
+            }
+            className="min-h-12 w-full rounded-2xl bg-[#f59e0b] px-6 py-3 text-sm font-extrabold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] disabled:opacity-50 sm:max-w-xl"
+          >
+            {submitBusy ? "…" : `Trimite (${pickedOptions.length})`}
+          </button>
+        ) : null}
+        <div className="hidden rounded-2xl border border-gray-700/50 bg-[#1a2236] px-6 py-3 text-center shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] sm:block">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
             Timp
           </p>

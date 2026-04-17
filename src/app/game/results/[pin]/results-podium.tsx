@@ -12,6 +12,8 @@ import { WinnerConfetti } from "./winner-confetti";
 type ResultsPodiumProps = {
   pin: string;
   players: Player[];
+  ctaHref: string;
+  ctaLabel: string;
 };
 
 function byScoreThenJoined(a: Player, b: Player): number {
@@ -21,7 +23,7 @@ function byScoreThenJoined(a: Player, b: Player): number {
   return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
 }
 
-export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
+export function ResultsPodium({ pin, players, ctaHref, ctaLabel }: ResultsPodiumProps) {
   const reduceMotion = useReducedMotion();
   const sorted = [...players].sort(byScoreThenJoined);
   const first = sorted[0];
@@ -212,20 +214,14 @@ export function ResultsPodium({ pin, players }: ResultsPodiumProps) {
             initial={reduceMotion ? undefined : { opacity: 0, y: 14 }}
             animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: "easeOut", delay: 0.22 }}
-            className="relative z-20 mx-auto -mt-[24px] flex min-h-[100px] max-w-lg items-center overflow-hidden border-t-[30px] border-t-[#0a0f1e] bg-[#1a2236] p-3 sm:-mt-[32px] sm:min-h-[116px]"
+            className="relative z-20 mx-auto -mt-[19px] flex min-h-[100px] max-w-lg items-center overflow-hidden border-t-[30px] border-t-[#0a0f1e] bg-[#1a2236] p-3 sm:-mt-[27px] sm:min-h-[116px]"
           >
             <nav className="mx-auto flex w-full max-w-md flex-col gap-3 sm:flex-row sm:justify-center">
               <Link
-                href="/"
+                href={ctaHref}
                 className="rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-8 py-3 text-center text-sm font-semibold text-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
               >
-                Acasă
-              </Link>
-              <Link
-                href="/join"
-                className="rounded-2xl bg-[#f59e0b] px-8 py-3 text-center text-sm font-bold text-[#0a0f1e] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35)] transition-transform hover:scale-[1.02] active:scale-[0.98]"
-              >
-                Joc nou
+                {ctaLabel}
               </Link>
             </nav>
           </motion.div>

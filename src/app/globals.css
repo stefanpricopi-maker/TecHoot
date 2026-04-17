@@ -72,6 +72,34 @@ body {
   }
 }
 
+/* Landing (/): subtle structural grid + slow seamless drift */
+@keyframes home_page_grid_drift {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+  100% {
+    background-position: 48px 48px, 48px 48px;
+  }
+}
+
+.home-page-grid-pattern {
+  background-image:
+    linear-gradient(rgba(248, 250, 252, 0.056) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      rgba(248, 250, 252, 0.056) 1px,
+      transparent 1px
+    );
+  background-size: 48px 48px;
+  animation: home_page_grid_drift 92s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-page-grid-pattern {
+    animation: none;
+  }
+}
+
 @keyframes kahoot_bg_drift {
   0% {
     background-position: 50% 0%;
@@ -82,6 +110,29 @@ body {
   100% {
     background-position: 50% 0%;
   }
+}
+
+@keyframes kahoot_reaction_float {
+  0% {
+    opacity: 0;
+    transform: translate3d(var(--rx, 0px), 0px, 0) scale(0.92);
+    filter: blur(0px);
+  }
+  6% {
+    opacity: 1;
+    transform: translate3d(var(--rx, 0px), 6vh, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--rx, 0px), 82vh, 0) scale(1.06);
+    filter: blur(0.2px);
+  }
+}
+
+.kahoot-reaction-float {
+  will-change: transform, opacity;
+  animation: kahoot_reaction_float 2000ms ease-out both;
+  z-index: 60;
 }
 
 @layer base {

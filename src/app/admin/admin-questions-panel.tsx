@@ -33,8 +33,13 @@ export function AdminQuestionsPanel(props: {
   const [listErr, setListErr] = useState<string | null>(null);
   const [editing, setEditing] = useState<AdminQuestionRowDto | null>(null);
   const [editPrompt, setEditPrompt] = useState("");
+  const [editReference, setEditReference] = useState("");
   const [editOptions, setEditOptions] = useState(["", "", "", ""]);
+  const [editType, setEditType] = useState<
+    "single" | "true_false" | "multi_select"
+  >("single");
   const [editCorrect, setEditCorrect] = useState(0);
+  const [editCorrectMulti, setEditCorrectMulti] = useState<number[]>([]);
   const [editTimeLimit, setEditTimeLimit] = useState("");
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [saveBusy, setSaveBusy] = useState(false);
@@ -50,8 +55,13 @@ export function AdminQuestionsPanel(props: {
 
   const [addOpen, setAddOpen] = useState(false);
   const [addPrompt, setAddPrompt] = useState("");
+  const [addReference, setAddReference] = useState("");
   const [addOptions, setAddOptions] = useState(["", "", "", ""]);
+  const [addType, setAddType] = useState<
+    "single" | "true_false" | "multi_select"
+  >("single");
   const [addCorrect, setAddCorrect] = useState(0);
+  const [addCorrectMulti, setAddCorrectMulti] = useState<number[]>([]);
   const [addTimeLimit, setAddTimeLimit] = useState("30");
   const [addBusy, setAddBusy] = useState(false);
   const [addErr, setAddErr] = useState<string | null>(null);
@@ -124,10 +134,13 @@ export function AdminQuestionsPanel(props: {
     setSaveErr(null);
     setEditing(row);
     setEditPrompt(row.prompt);
+    setEditReference(row.reference ?? "");
     const o = [...row.options];
     while (o.length < 4) o.push("");
     setEditOptions(o.slice(0, 4));
+    setEditType(row.question_type ?? "single");
     setEditCorrect(row.correct_option_index);
+    setEditCorrectMulti(row.correct_option_indices ?? []);
     setEditTimeLimit(
       row.time_limit_seconds != null ? String(row.time_limit_seconds) : "",
     );
@@ -142,7 +155,11 @@ export function AdminQuestionsPanel(props: {
     if (!editing) return;
     setSaveBusy(true);
     setSaveErr(null);
-    const opts = editOptions.map((x) => x.trim()).filter(Boolean);
+    const optSlots = editType === "true_false" ? 2 : 4;
+    const opts = editOptions
+      .slice(0, optSlots)
+      .map((x) => x.trim())
+      .filter(Boolean);
     const timeRaw = editTimeLimit.trim();
     const timeLimitSeconds =
       timeRaw === "" ? null : Math.floor(Number(timeRaw));
@@ -150,8 +167,11 @@ export function AdminQuestionsPanel(props: {
       const res = await updateQuizQuestionAdmin({
         questionId: editing.id,
         prompt: editPrompt,
+        reference: editReference,
         options: opts,
+        questionType: editType,
         correctOptionIndex: editCorrect,
+        correctOptionIndices: editCorrectMulti,
         timeLimitSeconds,
       });
       if (!res.ok) {
@@ -320,8 +340,11 @@ export function AdminQuestionsPanel(props: {
   const openAdd = () => {
     setAddErr(null);
     setAddPrompt("");
+    setAddReference("");
     setAddOptions(["", "", "", ""]);
+    setAddType("single");
     setAddCorrect(0);
+    setAddCorrectMulti([]);
     setAddTimeLimit("30");
     setAddOpen(true);
   };
@@ -330,7 +353,11 @@ export function AdminQuestionsPanel(props: {
     if (!quizId) return;
     setAddBusy(true);
     setAddErr(null);
-    const opts = addOptions.map((x) => x.trim()).filter(Boolean);
+    const optSlots = addType === "true_false" ? 2 : 4;
+    const opts = addOptions
+      .slice(0, optSlots)
+      .map((x) => x.trim())
+      .filter(Boolean);
     const timeRaw = addTimeLimit.trim();
     const timeLimitSeconds =
       timeRaw === "" ? null : Math.floor(Number(timeRaw));
@@ -338,8 +365,11 @@ export function AdminQuestionsPanel(props: {
       const res = await addQuizQuestionAdmin({
         quizId,
         prompt: addPrompt,
+        reference: addReference,
         options: opts,
+        questionType: addType,
         correctOptionIndex: addCorrect,
+        correctOptionIndices: addCorrectMulti,
         timeLimitSeconds,
       });
       if (!res.ok) {
@@ -568,7 +598,46 @@ export function AdminQuestionsPanel(props: {
                 className="w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
               />
             </label>
-            {[0, 1, 2, 3].map((i) => (
+            <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
+              Referință biblică (opțional)
+              <input
+                type="text"
+                value={editReference}
+                onChange={(e) => setEditReference(e.target.value)}
+                placeholder='Ex: "Geneza 1:1"'
+                className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
+              />
+            </label>
+            <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
+              Tip întrebare
+              <select
+                value={editType}
+                onChange={(e) => {
+                  const t = e.target.value as
+                    | "single"
+                    | "true_false"
+                    | "multi_select";
+                  setEditType(t);
+                  if (t === "true_false") {
+                    setEditOptions((prev) => {
+                      const next = [...prev];
+                      if (!next[0]?.trim()) next[0] = "Adevărat";
+                      if (!next[1]?.trim()) next[1] = "Fals";
+                      return next;
+                    });
+                  }
+                  if (t !== "multi_select") {
+                    setEditCorrectMulti([]);
+                  }
+                }}
+                className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
+              >
+                <option value="single">Single choice</option>
+                <option value="true_false">True / False</option>
+                <option value="multi_select">Multi-select</option>
+              </select>
+            </label>
+            {(editType === "true_false" ? [0, 1] : [0, 1, 2, 3]).map((i) => (
               <label
                 key={i}
                 className="mt-3 block space-y-2 text-sm font-medium text-gray-200"
@@ -587,23 +656,60 @@ export function AdminQuestionsPanel(props: {
               </label>
             ))}
             <p className="mt-2 text-xs text-gray-500">
-              Lipsă la variantă = ignorat; trebuie să rămână 2–4 variante
-              completate.
+              {editType === "true_false"
+                ? "True/False are exact 2 opțiuni."
+                : "Lipsă la variantă = ignorat; trebuie să rămână 2–4 variante completate."}
             </p>
-            <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
-              Răspuns corect (număr variantă)
-              <select
-                value={editCorrect}
-                onChange={(e) => setEditCorrect(Number(e.target.value))}
-                className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
-              >
-                {[0, 1, 2, 3].map((i) => (
-                  <option key={i} value={i}>
-                    {i + 1}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {editType === "multi_select" ? (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-medium text-gray-200">
+                  Răspunsuri corecte (poți bifa mai multe)
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[0, 1, 2, 3].map((i) => {
+                    const label = (editOptions[i] ?? "").trim();
+                    const disabled = label.length === 0;
+                    const checked = editCorrectMulti.includes(i);
+                    return (
+                      <button
+                        key={`edit-corr-${i}`}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() =>
+                          setEditCorrectMulti((prev) =>
+                            prev.includes(i)
+                              ? prev.filter((x) => x !== i)
+                              : [...prev, i].sort((a, b) => a - b),
+                          )
+                        }
+                        className={`rounded-2xl border px-4 py-2 text-sm font-semibold transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 ${
+                          checked
+                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+                            : "border-gray-700/50 bg-[#0a0f1e] text-gray-200"
+                        }`}
+                      >
+                        {i + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
+                Răspuns corect (număr variantă)
+                <select
+                  value={editCorrect}
+                  onChange={(e) => setEditCorrect(Number(e.target.value))}
+                  className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
+                >
+                  {(editType === "true_false" ? [0, 1] : [0, 1, 2, 3]).map((i) => (
+                    <option key={i} value={i}>
+                      {i + 1}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
               Limită timp (secunde, goal = implicit DB / app)
               <input
@@ -664,7 +770,46 @@ export function AdminQuestionsPanel(props: {
                 className="w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
               />
             </label>
-            {[0, 1, 2, 3].map((i) => (
+            <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
+              Referință biblică (opțional)
+              <input
+                type="text"
+                value={addReference}
+                onChange={(e) => setAddReference(e.target.value)}
+                placeholder='Ex: "Geneza 1:1"'
+                className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
+              />
+            </label>
+            <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
+              Tip întrebare
+              <select
+                value={addType}
+                onChange={(e) => {
+                  const t = e.target.value as
+                    | "single"
+                    | "true_false"
+                    | "multi_select";
+                  setAddType(t);
+                  if (t === "true_false") {
+                    setAddOptions((prev) => {
+                      const next = [...prev];
+                      if (!next[0]?.trim()) next[0] = "Adevărat";
+                      if (!next[1]?.trim()) next[1] = "Fals";
+                      return next;
+                    });
+                  }
+                  if (t !== "multi_select") {
+                    setAddCorrectMulti([]);
+                  }
+                }}
+                className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
+              >
+                <option value="single">Single choice</option>
+                <option value="true_false">True / False</option>
+                <option value="multi_select">Multi-select</option>
+              </select>
+            </label>
+            {(addType === "true_false" ? [0, 1] : [0, 1, 2, 3]).map((i) => (
               <label
                 key={i}
                 className="mt-3 block space-y-2 text-sm font-medium text-gray-200"
@@ -682,20 +827,56 @@ export function AdminQuestionsPanel(props: {
                 />
               </label>
             ))}
-            <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
-              Răspuns corect
-              <select
-                value={addCorrect}
-                onChange={(e) => setAddCorrect(Number(e.target.value))}
-                className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
-              >
-                {[0, 1, 2, 3].map((i) => (
-                  <option key={i} value={i}>
-                    {i + 1}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {addType === "multi_select" ? (
+              <div className="mt-4 space-y-2">
+                <p className="text-sm font-medium text-gray-200">
+                  Răspunsuri corecte (poți bifa mai multe)
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[0, 1, 2, 3].map((i) => {
+                    const label = (addOptions[i] ?? "").trim();
+                    const disabled = label.length === 0;
+                    const checked = addCorrectMulti.includes(i);
+                    return (
+                      <button
+                        key={`add-corr-${i}`}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() =>
+                          setAddCorrectMulti((prev) =>
+                            prev.includes(i)
+                              ? prev.filter((x) => x !== i)
+                              : [...prev, i].sort((a, b) => a - b),
+                          )
+                        }
+                        className={`rounded-2xl border px-4 py-2 text-sm font-semibold transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 ${
+                          checked
+                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+                            : "border-gray-700/50 bg-[#0a0f1e] text-gray-200"
+                        }`}
+                      >
+                        {i + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
+                Răspuns corect
+                <select
+                  value={addCorrect}
+                  onChange={(e) => setAddCorrect(Number(e.target.value))}
+                  className="min-h-11 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner"
+                >
+                  {(addType === "true_false" ? [0, 1] : [0, 1, 2, 3]).map((i) => (
+                    <option key={i} value={i}>
+                      {i + 1}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="mt-4 block space-y-2 text-sm font-medium text-gray-200">
               Limită timp (sec.)
               <input

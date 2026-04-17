@@ -2,8 +2,22 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="relative min-h-dvh px-4 py-safe pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] text-gray-100">
-      <div className="mx-auto flex min-h-dvh max-w-2xl flex-col items-center justify-center gap-8 text-center">
+    <div className="relative isolate min-h-dvh overflow-hidden px-4 py-safe pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] text-gray-100">
+      {/* Solid base + animated diagonal pattern (slow drift), home route only */}
+      <div
+        className="pointer-events-none fixed inset-0 -z-10 bg-[#0a0f1e]"
+        aria-hidden
+      />
+      {/* Static diagonal hints (no motion — avoids tiling seams); grid layer drifts slowly */}
+      <div
+        className="pointer-events-none fixed inset-0 -z-10 bg-[repeating-linear-gradient(-34deg,transparent_0,transparent_22px,rgba(248,250,252,0.035)_22px,rgba(248,250,252,0.035)_23px)] opacity-25"
+        aria-hidden
+      />
+      <div
+        className="home-page-grid-pattern pointer-events-none fixed inset-0 -z-10 opacity-[0.4]"
+        aria-hidden
+      />
+      <div className="relative z-0 mx-auto flex min-h-dvh max-w-2xl flex-col items-center justify-center gap-8 text-center">
         <div className="inline-flex items-center gap-2 rounded-full border border-gray-700/50 bg-[#1a2236] px-5 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-gray-400 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
           <span className="h-2 w-2 rounded-full bg-[#f59e0b]" />
           Live quiz

@@ -23,7 +23,13 @@ export type StartGameResult =
   | { ok: false; error: string };
 
 export type JoinSessionResult =
-  | { ok: true; playerId: string; pin: string; nickname: string }
+  | {
+      ok: true;
+      playerId: string;
+      pin: string;
+      nickname: string;
+      needsTeam?: boolean;
+    }
   | { ok: false; error: string };
 
 export type ResumeSessionRouteResult =
@@ -161,8 +167,11 @@ export type AdminQuestionRowDto = {
   id: string;
   quiz_id: string;
   prompt: string;
+  reference: string | null;
   options: string[];
+  question_type: "single" | "true_false" | "multi_select";
   correct_option_index: number;
+  correct_option_indices: number[] | null;
   order_index: number;
   time_limit_seconds: number | null;
 };
@@ -203,7 +212,7 @@ export async function listQuizQuestionsAdminPage(
   const { data, error } = await supabase
     .from("questions")
     .select(
-      "id, quiz_id, prompt, options, correct_option_index, order_index, time_limit_seconds",
+      "id, quiz_id, prompt, reference, options, question_type, correct_option_index, correct_option_indices, order_index, time_limit_seconds",
     )
     .eq("quiz_id", quizId)
     .order("order_index", { ascending: true })
@@ -219,12 +228,30 @@ export async function listQuizQuestionsAdminPage(
     const options = Array.isArray(raw)
       ? (raw as unknown[]).filter((x): x is string => typeof x === "string")
       : [];
+    const qtypeRaw = (row as any).question_type as unknown;
+    const qtype =
+      qtypeRaw === "true_false"
+        ? "true_false"
+        : qtypeRaw === "multi_select"
+          ? "multi_select"
+          : "single";
+    const corrArrRaw = (row as any).correct_option_indices as unknown;
+    const corrArr =
+      Array.isArray(corrArrRaw) && corrArrRaw.every((v) => typeof v === "number")
+        ? (corrArrRaw as number[]).map((x) => Math.floor(x))
+        : null;
     return {
       id: row.id as string,
       quiz_id: row.quiz_id as string,
       prompt: String(row.prompt ?? ""),
+      reference:
+        typeof (row as any).reference === "string"
+          ? String((row as any).reference)
+          : null,
       options,
+      question_type: qtype,
       correct_option_index: Number(row.correct_option_index ?? 0),
+      correct_option_indices: corrArr,
       order_index: Number(row.order_index ?? 0),
       time_limit_seconds:
         row.time_limit_seconds == null
@@ -239,8 +266,11 @@ export async function listQuizQuestionsAdminPage(
 export async function updateQuizQuestionAdmin(input: {
   questionId: string /** UUID */;
   prompt: string;
+  reference?: string | null;
   options: string[];
-  correctOptionIndex: number;
+  questionType?: "single" | "true_false" | "multi_select";
+  correctOptionIndex?: number;
+  correctOptionIndices?: number[] | null;
   timeLimitSeconds: number | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!isUuid(input.questionId)) {
@@ -250,15 +280,46 @@ export async function updateQuizQuestionAdmin(input: {
   if (!prompt) {
     return { ok: false, error: "Textul întrebării nu poate fi gol." };
   }
+  const questionType =
+    input.questionType === "true_false"
+      ? "true_false"
+      : input.questionType === "multi_select"
+        ? "multi_select"
+        : "single";
   const opts = input.options.map((o) => String(o).trim()).filter(Boolean);
-  if (opts.length < 2 || opts.length > 4) {
-    return { ok: false, error: "Sunt necesare între 2 și 4 variante de răspuns." };
+  if (questionType === "true_false") {
+    if (opts.length !== 2) {
+      return { ok: false, error: "True/False trebuie să aibă exact 2 opțiuni." };
+    }
+  } else {
+    if (opts.length < 2 || opts.length > 4) {
+      return { ok: false, error: "Sunt necesare între 2 și 4 variante de răspuns." };
+    }
   }
-  if (
-    input.correctOptionIndex < 0 ||
-    input.correctOptionIndex >= opts.length
-  ) {
-    return { ok: false, error: "Răspunsul corect trebuie să fie o variantă validă." };
+
+  let correct_option_index = 0;
+  let correct_option_indices: number[] | null = null;
+
+  if (questionType === "multi_select") {
+    const raw = input.correctOptionIndices ?? [];
+    const norm = Array.isArray(raw)
+      ? raw
+          .map((x) => Math.floor(Number(x)))
+          .filter((x) => Number.isFinite(x) && x >= 0 && x < opts.length)
+      : [];
+    const uniq = Array.from(new Set(norm));
+    if (uniq.length < 1) {
+      return { ok: false, error: "Multi-select: selectează cel puțin un răspuns corect." };
+    }
+    correct_option_indices = uniq;
+    correct_option_index = 0;
+  } else {
+    const idx = Math.floor(Number(input.correctOptionIndex ?? 0));
+    if (!Number.isFinite(idx) || idx < 0 || idx >= opts.length) {
+      return { ok: false, error: "Răspunsul corect trebuie să fie o variantă validă." };
+    }
+    correct_option_index = idx;
+    correct_option_indices = null;
   }
   if (input.timeLimitSeconds != null) {
     const t = Number(input.timeLimitSeconds);
@@ -268,12 +329,17 @@ export async function updateQuizQuestionAdmin(input: {
   }
 
   const supabase = createSupabaseAdminClient();
+  const reference =
+    input.reference == null ? null : String(input.reference).trim() || null;
   const { error } = await supabase
     .from("questions")
     .update({
       prompt,
+      reference,
       options: opts,
-      correct_option_index: input.correctOptionIndex,
+      question_type: questionType,
+      correct_option_index,
+      correct_option_indices,
       time_limit_seconds:
         input.timeLimitSeconds == null
           ? null
@@ -304,6 +370,7 @@ export async function deleteQuizQuestionAdmin(
 
 export type ImportQuizQuestionItemInput = {
   prompt: string;
+  reference?: string | null;
   options: string[];
   correctOptionIndex: number;
 };
@@ -320,12 +387,20 @@ export type ImportQuizQuestionsBatchAdminResult =
 function normalizeImportQuestionItem(
   raw: ImportQuizQuestionItemInput,
 ):
-  | { ok: true; prompt: string; options: string[]; correctOptionIndex: number }
+  | {
+      ok: true;
+      prompt: string;
+      reference: string | null;
+      options: string[];
+      correctOptionIndex: number;
+    }
   | { ok: false; message: string } {
   const prompt = String(raw.prompt ?? "").trim();
   if (!prompt) {
     return { ok: false, message: "Textul întrebării lipsește sau e gol." };
   }
+  const reference =
+    raw.reference == null ? null : String(raw.reference).trim() || null;
   const opts = (raw.options ?? []).map((o) => String(o).trim()).filter(Boolean);
   if (opts.length < 2 || opts.length > 4) {
     return {
@@ -337,7 +412,13 @@ function normalizeImportQuestionItem(
   if (!Number.isFinite(idx) || idx < 0 || idx >= opts.length) {
     return { ok: false, message: "Indexul răspunsului corect nu e valid." };
   }
-  return { ok: true, prompt, options: opts, correctOptionIndex: Math.floor(idx) };
+  return {
+    ok: true,
+    prompt,
+    reference,
+    options: opts,
+    correctOptionIndex: Math.floor(idx),
+  };
 }
 
 /**
@@ -418,6 +499,7 @@ export async function importQuizQuestionsBatchAdmin(input: {
   const rows: {
     quiz_id: string;
     prompt: string;
+    reference: string | null;
     options: string[];
     correct_option_index: number;
     order_index: number;
@@ -443,6 +525,7 @@ export async function importQuizQuestionsBatchAdmin(input: {
     rows.push({
       quiz_id: quizId,
       prompt: norm.prompt,
+      reference: norm.reference,
       options: norm.options,
       correct_option_index: norm.correctOptionIndex,
       order_index: nextOrder,
@@ -688,7 +771,7 @@ export async function exportQuizQuestionsJsonAdmin(
     }
     const { data: rows, error } = await supabase
       .from("questions")
-      .select("prompt, options, correct_option_index")
+      .select("prompt, reference, options, correct_option_index")
       .eq("quiz_id", quizId)
       .order("order_index", { ascending: true })
       .order("id", { ascending: true });
@@ -702,6 +785,10 @@ export async function exportQuizQuestionsJsonAdmin(
         : [];
       return {
         question: String(r.prompt ?? ""),
+        reference:
+          typeof (r as any).reference === "string"
+            ? String((r as any).reference)
+            : undefined,
         options,
         correct: Number(r.correct_option_index ?? 0),
       };
@@ -724,17 +811,58 @@ export async function exportQuizQuestionsJsonAdmin(
 export async function addQuizQuestionAdmin(input: {
   quizId: string;
   prompt: string;
+  reference?: string | null;
   options: string[];
-  correctOptionIndex: number;
+  questionType?: "single" | "true_false" | "multi_select";
+  correctOptionIndex?: number;
+  correctOptionIndices?: number[] | null;
   timeLimitSeconds?: number | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const norm = normalizeImportQuestionItem({
-    prompt: input.prompt,
-    options: input.options,
-    correctOptionIndex: input.correctOptionIndex,
-  });
-  if (!norm.ok) {
-    return { ok: false, error: norm.message };
+  const questionType =
+    input.questionType === "true_false"
+      ? "true_false"
+      : input.questionType === "multi_select"
+        ? "multi_select"
+        : "single";
+  const prompt = String(input.prompt ?? "").trim();
+  if (!prompt) {
+    return { ok: false, error: "Textul întrebării lipsește sau e gol." };
+  }
+  const opts = (input.options ?? []).map((o) => String(o).trim()).filter(Boolean);
+  const reference =
+    input.reference == null ? null : String(input.reference).trim() || null;
+  if (questionType === "true_false") {
+    if (opts.length !== 2) {
+      return { ok: false, error: "True/False trebuie să aibă exact 2 opțiuni." };
+    }
+  } else {
+    if (opts.length < 2 || opts.length > 4) {
+      return { ok: false, error: "Sunt necesare între 2 și 4 variante de răspuns (ne-goale)." };
+    }
+  }
+
+  let correct_option_index = 0;
+  let correct_option_indices: number[] | null = null;
+  if (questionType === "multi_select") {
+    const raw = input.correctOptionIndices ?? [];
+    const norm = Array.isArray(raw)
+      ? raw
+          .map((x) => Math.floor(Number(x)))
+          .filter((x) => Number.isFinite(x) && x >= 0 && x < opts.length)
+      : [];
+    const uniq = Array.from(new Set(norm));
+    if (uniq.length < 1) {
+      return { ok: false, error: "Multi-select: selectează cel puțin un răspuns corect." };
+    }
+    correct_option_indices = uniq;
+    correct_option_index = 0;
+  } else {
+    const idx = Math.floor(Number(input.correctOptionIndex ?? 0));
+    if (!Number.isFinite(idx) || idx < 0 || idx >= opts.length) {
+      return { ok: false, error: "Indexul răspunsului corect nu e valid." };
+    }
+    correct_option_index = idx;
+    correct_option_indices = null;
   }
   const quizId = input.quizId.trim();
   if (!isUuid(quizId)) {
@@ -774,9 +902,12 @@ export async function addQuizQuestionAdmin(input: {
         : Math.floor(Number(maxRow.order_index)) + 1;
     const { error: ie } = await supabase.from("questions").insert({
       quiz_id: quizId,
-      prompt: norm.prompt,
-      options: norm.options,
-      correct_option_index: norm.correctOptionIndex,
+      prompt,
+      reference,
+      options: opts,
+      question_type: questionType,
+      correct_option_index,
+      correct_option_indices,
       order_index: nextOrder,
       time_limit_seconds: timeLimit,
     });
@@ -800,6 +931,7 @@ export type AdminSessionRowDto = {
   created_at: string;
   started_at: string | null;
   ended_at: string | null;
+  results_published_at: string | null;
 };
 
 export type ListSessionsAdminPageResult =
@@ -834,7 +966,9 @@ export async function listSessionsAdminPage(
 
     const { data, error } = await supabase
       .from("sessions")
-      .select("id, pin, status, quiz_id, created_at, started_at, ended_at")
+      .select(
+        "id, pin, status, quiz_id, created_at, started_at, ended_at, results_published_at",
+      )
       .order("created_at", { ascending: false })
       .range(from, to);
 
@@ -866,6 +1000,8 @@ export async function listSessionsAdminPage(
         created_at: String(row.created_at ?? ""),
         started_at: row.started_at == null ? null : String(row.started_at),
         ended_at: row.ended_at == null ? null : String(row.ended_at),
+        results_published_at:
+          row.results_published_at == null ? null : String(row.results_published_at),
       };
     });
 
@@ -892,6 +1028,7 @@ export async function forceFinishSessionAdmin(
       .update({
         status: "finished",
         ended_at: now,
+        results_published_at: null,
       })
       .eq("id", sessionId);
     if (error) {
@@ -909,27 +1046,324 @@ const MAX_PIN_ATTEMPTS = 25;
 const BASE_SCORE_CORRECT = 1000;
 const MAX_SPEED_BONUS = 500;
 
+function computeSpeedBonus(
+  answeredAt: Date,
+  roundStartedAt: Date | null,
+  timeLimitSeconds: number,
+): number {
+  if (!roundStartedAt || timeLimitSeconds <= 0) {
+    return 0;
+  }
+  const limitMs = timeLimitSeconds * 1000;
+  const elapsed = Math.max(0, answeredAt.getTime() - roundStartedAt.getTime());
+  const ratio = Math.min(1, elapsed / limitMs);
+  return Math.floor(MAX_SPEED_BONUS * (1 - ratio));
+}
+
+function computeRoundPointsByFraction(
+  fractionRaw: number,
+  answeredAt: Date,
+  roundStartedAt: Date | null,
+  timeLimitSeconds: number,
+): number {
+  const fraction = Number.isFinite(fractionRaw)
+    ? Math.max(0, Math.min(1, fractionRaw))
+    : 0;
+  if (fraction <= 0) return 0;
+  const bonus = computeSpeedBonus(answeredAt, roundStartedAt, timeLimitSeconds);
+  return Math.floor((BASE_SCORE_CORRECT + bonus) * fraction);
+}
+
 function computeRoundPoints(
   correct: boolean,
   answeredAt: Date,
   roundStartedAt: Date | null,
   timeLimitSeconds: number,
 ): number {
-  if (!correct) {
-    return 0;
-  }
-  if (!roundStartedAt || timeLimitSeconds <= 0) {
-    return BASE_SCORE_CORRECT;
-  }
-  const limitMs = timeLimitSeconds * 1000;
-  const elapsed = Math.max(0, answeredAt.getTime() - roundStartedAt.getTime());
-  const ratio = Math.min(1, elapsed / limitMs);
-  const bonus = Math.floor(MAX_SPEED_BONUS * (1 - ratio));
-  return BASE_SCORE_CORRECT + bonus;
+  return computeRoundPointsByFraction(
+    correct ? 1 : 0,
+    answeredAt,
+    roundStartedAt,
+    timeLimitSeconds,
+  );
 }
 
 function isUniqueViolation(err: { code?: string; message?: string }): boolean {
   return err.code === "23505" || err.message?.includes("duplicate key") === true;
+}
+
+type PowerUpType = "fifty_fifty" | "shield" | "double_points";
+
+function normalizePowerUpType(raw: unknown): PowerUpType | null {
+  if (raw === "fifty_fifty") return "fifty_fifty";
+  if (raw === "shield") return "shield";
+  if (raw === "double_points") return "double_points";
+  return null;
+}
+
+function readPowerUpCount(powerups: unknown, key: PowerUpType): number {
+  if (!powerups || typeof powerups !== "object") return 0;
+  const v = (powerups as any)[key];
+  const n = Math.floor(Number(v ?? 0));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function withPowerUpDelta(
+  powerups: unknown,
+  key: PowerUpType,
+  delta: number,
+): Record<string, number> {
+  const base: Record<string, number> =
+    powerups && typeof powerups === "object" ? { ...(powerups as any) } : {};
+  const cur = readPowerUpCount(base, key);
+  const next = Math.max(0, cur + delta);
+  base[key] = next;
+  return base;
+}
+
+export async function getMyPowerUps(pinRaw: string, playerId: string): Promise<
+  | {
+      ok: true;
+      streak: number;
+      pendingReward: boolean;
+      powerups: { fifty_fifty: number; shield: number; double_points: number };
+      active: { type: PowerUpType | null; uses: number; questionIndex: number | null };
+    }
+  | { ok: false; error: string }
+> {
+  const pin = normalizeJoinPin(pinRaw);
+  if (!pin) return { ok: false, error: "PIN invalid." };
+  const cookieStore = await cookies();
+  const cookiePid = cookieStore.get(PLAYER_ID_COOKIE)?.value;
+  if (!cookiePid || cookiePid !== playerId) return { ok: false, error: "Neautorizat." };
+
+  const supabase = createSupabaseAdminClient();
+  const { data: sess, error: sErr } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("pin", pin)
+    .maybeSingle();
+  if (sErr) return { ok: false, error: sErr.message };
+  if (!sess?.id) return { ok: false, error: "Sesiune inexistentă." };
+
+  const sessionId = String((sess as any).id ?? "");
+  const { data: pl, error: pErr } = await supabase
+    .from("players")
+    .select(
+      "id, session_id, correct_streak, pending_powerup_reward, powerups, active_powerup, active_powerup_uses, active_powerup_question_index",
+    )
+    .eq("id", playerId)
+    .maybeSingle();
+  if (pErr) return { ok: false, error: pErr.message };
+  if (!pl?.id || String((pl as any).session_id ?? "") !== sessionId) {
+    return { ok: false, error: "Jucător invalid pentru această sesiune." };
+  }
+
+  const pu = (pl as any).powerups as unknown;
+  const activeType = normalizePowerUpType((pl as any).active_powerup);
+  const uses = Math.floor(Number((pl as any).active_powerup_uses ?? 0));
+  const qixRaw = (pl as any).active_powerup_question_index;
+  const qix =
+    typeof qixRaw === "number" && Number.isFinite(qixRaw) ? Math.floor(qixRaw) : null;
+  return {
+    ok: true,
+    streak: Math.floor(Number((pl as any).correct_streak ?? 0)),
+    pendingReward: Boolean((pl as any).pending_powerup_reward ?? false),
+    powerups: {
+      fifty_fifty: readPowerUpCount(pu, "fifty_fifty"),
+      shield: readPowerUpCount(pu, "shield"),
+      double_points: readPowerUpCount(pu, "double_points"),
+    },
+    active: { type: activeType, uses: Number.isFinite(uses) ? uses : 0, questionIndex: qix },
+  };
+}
+
+export async function pickPowerUpReward(input: {
+  pin: string;
+  playerId: string;
+  type: PowerUpType;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const pin = normalizeJoinPin(input.pin);
+  if (!pin) return { ok: false, error: "PIN invalid." };
+  const cookieStore = await cookies();
+  const cookiePid = cookieStore.get(PLAYER_ID_COOKIE)?.value;
+  if (!cookiePid || cookiePid !== input.playerId) return { ok: false, error: "Neautorizat." };
+  const type = normalizePowerUpType(input.type);
+  if (!type) return { ok: false, error: "Power-up invalid." };
+
+  const supabase = createSupabaseAdminClient();
+  const { data: sess, error: sErr } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("pin", pin)
+    .maybeSingle();
+  if (sErr) return { ok: false, error: sErr.message };
+  if (!sess?.id) return { ok: false, error: "Sesiune inexistentă." };
+  const sessionId = String((sess as any).id ?? "");
+
+  const { data: pl, error: pErr } = await supabase
+    .from("players")
+    .select("id, session_id, pending_powerup_reward, powerups")
+    .eq("id", input.playerId)
+    .maybeSingle();
+  if (pErr) return { ok: false, error: pErr.message };
+  if (!pl?.id || String((pl as any).session_id ?? "") !== sessionId) {
+    return { ok: false, error: "Jucător invalid pentru această sesiune." };
+  }
+  if (!Boolean((pl as any).pending_powerup_reward ?? false)) {
+    return { ok: false, error: "Nu ai un reward de ales acum." };
+  }
+
+  const nextPowerups = withPowerUpDelta((pl as any).powerups, type, +1);
+  const { error: upErr } = await supabase
+    .from("players")
+    .update({ powerups: nextPowerups, pending_powerup_reward: false })
+    .eq("id", input.playerId);
+  if (upErr) return { ok: false, error: upErr.message };
+  return { ok: true };
+}
+
+export async function activatePowerUp(input: {
+  pin: string;
+  playerId: string;
+  type: PowerUpType;
+  questionIndex: number;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const pin = normalizeJoinPin(input.pin);
+  if (!pin) return { ok: false, error: "PIN invalid." };
+  const cookieStore = await cookies();
+  const cookiePid = cookieStore.get(PLAYER_ID_COOKIE)?.value;
+  if (!cookiePid || cookiePid !== input.playerId) return { ok: false, error: "Neautorizat." };
+  const type = normalizePowerUpType(input.type);
+  if (!type) return { ok: false, error: "Power-up invalid." };
+  const qIdx = Math.floor(Number(input.questionIndex));
+  if (!Number.isFinite(qIdx) || qIdx < 0) return { ok: false, error: "Întrebare invalidă." };
+
+  const supabase = createSupabaseAdminClient();
+  const { data: sess, error: sErr } = await supabase
+    .from("sessions")
+    .select("id, status, current_question_index")
+    .eq("pin", pin)
+    .maybeSingle();
+  if (sErr) return { ok: false, error: sErr.message };
+  if (!sess?.id) return { ok: false, error: "Sesiune inexistentă." };
+  if (String((sess as any).status ?? "") !== "question_active") {
+    return { ok: false, error: "Nu poți activa acum." };
+  }
+  if (Number((sess as any).current_question_index ?? -1) !== qIdx) {
+    return { ok: false, error: "Întrebarea nu corespunde rundei curente." };
+  }
+
+  const sessionId = String((sess as any).id ?? "");
+  const { data: pl, error: pErr } = await supabase
+    .from("players")
+    .select("id, session_id, powerups, active_powerup, active_powerup_uses")
+    .eq("id", input.playerId)
+    .maybeSingle();
+  if (pErr) return { ok: false, error: pErr.message };
+  if (!pl?.id || String((pl as any).session_id ?? "") !== sessionId) {
+    return { ok: false, error: "Jucător invalid pentru această sesiune." };
+  }
+  if (normalizePowerUpType((pl as any).active_powerup) && Number((pl as any).active_powerup_uses ?? 0) > 0) {
+    return { ok: false, error: "Ai deja un power-up activ." };
+  }
+
+  const inv = (pl as any).powerups as unknown;
+  if (readPowerUpCount(inv, type) < 1) {
+    return { ok: false, error: "Nu ai acest power-up disponibil." };
+  }
+
+  const nextInv = withPowerUpDelta(inv, type, -1);
+  const { error: upErr } = await supabase
+    .from("players")
+    .update({
+      powerups: nextInv,
+      active_powerup: type,
+      active_powerup_uses: 1,
+      active_powerup_question_index: qIdx,
+    })
+    .eq("id", input.playerId);
+  if (upErr) return { ok: false, error: upErr.message };
+  return { ok: true };
+}
+
+export async function useFiftyFifty(input: {
+  pin: string;
+  playerId: string;
+  questionId: string;
+}): Promise<{ ok: true; keep: [number, number] } | { ok: false; error: string }> {
+  const pin = normalizeJoinPin(input.pin);
+  if (!pin) return { ok: false, error: "PIN invalid." };
+  const cookieStore = await cookies();
+  const cookiePid = cookieStore.get(PLAYER_ID_COOKIE)?.value;
+  if (!cookiePid || cookiePid !== input.playerId) return { ok: false, error: "Neautorizat." };
+
+  const supabase = createSupabaseAdminClient();
+  const { data: sess, error: sErr } = await supabase
+    .from("sessions")
+    .select(
+      "id, status, current_question_index, current_question_started_at, quiz_id, question_count, question_seed, randomize_questions, pin",
+    )
+    .eq("pin", pin)
+    .maybeSingle();
+  if (sErr) return { ok: false, error: sErr.message };
+  if (!sess?.id) return { ok: false, error: "Sesiune inexistentă." };
+  if (String((sess as any).status ?? "") !== "question_active") {
+    return { ok: false, error: "Nu poți folosi 50/50 acum." };
+  }
+
+  const sessionId = String((sess as any).id ?? "");
+  const qIdx = Number((sess as any).current_question_index ?? -1);
+
+  const { data: pl, error: pErr } = await supabase
+    .from("players")
+    .select("id, session_id, powerups")
+    .eq("id", input.playerId)
+    .maybeSingle();
+  if (pErr) return { ok: false, error: pErr.message };
+  if (!pl?.id || String((pl as any).session_id ?? "") !== sessionId) {
+    return { ok: false, error: "Jucător invalid pentru această sesiune." };
+  }
+
+  const inv = (pl as any).powerups as unknown;
+  if (readPowerUpCount(inv, "fifty_fifty") < 1) {
+    return { ok: false, error: "Nu ai 50/50 disponibil." };
+  }
+
+  const quizId = (sess as any).quiz_id as string | undefined;
+  if (!quizId) return { ok: false, error: "Sesiune fără quiz." };
+  const ordered = await fetchOrderedQuizQuestions(supabase, quizId);
+  const seedVal = (sess as any).question_seed as number | null | undefined;
+  const seed =
+    typeof seedVal === "number" && Number.isFinite(seedVal) && seedVal > 0
+      ? Math.floor(seedVal)
+      : hashStringToSeed(String((sess as any).pin ?? pin));
+  const randomize = ((sess as any).randomize_questions as boolean | null) ?? true;
+  const shuffled = randomize ? seededShuffle(ordered, seed) : ordered;
+  const rawLimit = (sess as any).question_count as number | null | undefined;
+  const limit =
+    typeof rawLimit === "number" && Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(shuffled.length, Math.floor(rawLimit))
+      : shuffled.length;
+  const effective = shuffled.slice(0, limit);
+  const q = effective[qIdx];
+  if (!q || q.id !== input.questionId) return { ok: false, error: "Întrebarea nu corespunde rundei curente." };
+  if (q.type !== "single") return { ok: false, error: "50/50 e disponibil doar pentru întrebări single choice." };
+  if (q.options.length !== 4) return { ok: false, error: "50/50 funcționează doar la întrebări cu 4 opțiuni." };
+
+  const correct = q.correctAnswerIndex;
+  const wrong = [0, 1, 2, 3].filter((i) => i !== correct);
+  const other = wrong[Math.floor(Math.random() * wrong.length)] ?? wrong[0]!;
+  const keep: [number, number] = correct < other ? [correct, other] : [other, correct];
+
+  const nextInv = withPowerUpDelta(inv, "fifty_fifty", -1);
+  const { error: upErr } = await supabase
+    .from("players")
+    .update({ powerups: nextInv })
+    .eq("id", input.playerId);
+  if (upErr) return { ok: false, error: upErr.message };
+
+  return { ok: true, keep };
 }
 
 async function requireAdminForSession(sessionId: string): Promise<
@@ -963,6 +1397,7 @@ export async function createSession(
   quizIdRaw: string,
   questionCountRaw?: number | null,
   randomizeQuestionsRaw?: boolean,
+  teamModeRaw?: boolean,
 ): Promise<CreateSessionResult> {
   const quizId = quizIdRaw.trim();
   if (!isUuid(quizId)) {
@@ -1009,6 +1444,7 @@ export async function createSession(
 
   const randomizeQuestions =
     typeof randomizeQuestionsRaw === "boolean" ? randomizeQuestionsRaw : true;
+  const teamMode = typeof teamModeRaw === "boolean" ? teamModeRaw : false;
   const sessionSeed = Math.floor(Math.random() * 2_147_483_647) + 1;
 
   for (let attempt = 0; attempt < MAX_PIN_ATTEMPTS; attempt++) {
@@ -1021,6 +1457,7 @@ export async function createSession(
         question_count: qc,
         question_seed: sessionSeed,
         randomize_questions: randomizeQuestions,
+        team_mode: teamMode,
         pin,
         status: "lobby",
       })
@@ -1111,7 +1548,7 @@ export async function joinSession(
 
   const { data: session, error: sessionError } = await supabase
     .from("sessions")
-    .select("id, status, ended_at, expires_at")
+    .select("id, status, ended_at, expires_at, team_mode")
     .eq("pin", pin)
     .maybeSingle();
 
@@ -1174,7 +1611,154 @@ export async function joinSession(
     maxAge: PLAYER_COOKIE_MAX_AGE,
   });
 
-  return { ok: true, playerId, pin, nickname };
+  return {
+    ok: true,
+    playerId,
+    pin,
+    nickname,
+    needsTeam: Boolean((session as any).team_mode ?? false) || undefined,
+  };
+}
+
+export type TeamRowDto = { id: string; name: string };
+
+export async function listTeamsForPin(
+  pinRaw: string,
+): Promise<{ ok: true; teams: TeamRowDto[]; sessionId: string } | { ok: false; error: string }> {
+  const pin = normalizeJoinPin(pinRaw);
+  if (!pin) return { ok: false, error: "PIN invalid." };
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data: sess, error: se } = await supabase
+      .from("sessions")
+      .select("id, team_mode")
+      .eq("pin", pin)
+      .maybeSingle();
+    if (se) return { ok: false, error: se.message };
+    if (!sess?.id) return { ok: false, error: "Sesiune inexistentă." };
+    if (!Boolean((sess as any).team_mode ?? false)) {
+      return { ok: true, teams: [], sessionId: sess.id as string };
+    }
+    const { data, error } = await supabase
+      .from("teams")
+      .select("id, name")
+      .eq("session_id", sess.id as string)
+      .order("created_at", { ascending: true });
+    if (error) return { ok: false, error: error.message };
+    return {
+      ok: true,
+      sessionId: sess.id as string,
+      teams: (data ?? []).map((t) => ({ id: t.id as string, name: String(t.name ?? "") })),
+    };
+  } catch (e) {
+    const msg = e instanceof Error && e.message ? e.message : "Eroare la listare echipe.";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function joinTeam(
+  pinRaw: string,
+  playerIdRaw: string,
+  teamIdRaw: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const pin = normalizeJoinPin(pinRaw);
+  if (!pin) return { ok: false, error: "PIN invalid." };
+  const playerId = playerIdRaw.trim();
+  const teamId = teamIdRaw.trim();
+  if (!isUuid(playerId) || !isUuid(teamId)) {
+    return { ok: false, error: "ID invalid." };
+  }
+  const cookieStore = await cookies();
+  const cookiePid = cookieStore.get(PLAYER_ID_COOKIE)?.value;
+  if (!cookiePid || cookiePid !== playerId) {
+    return { ok: false, error: "Neautorizat." };
+  }
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data: sess, error: se } = await supabase
+      .from("sessions")
+      .select("id, team_mode")
+      .eq("pin", pin)
+      .maybeSingle();
+    if (se) return { ok: false, error: se.message };
+    if (!sess?.id) return { ok: false, error: "Sesiune inexistentă." };
+    if (!Boolean((sess as any).team_mode ?? false)) {
+      return { ok: false, error: "Sesiunea nu este în team mode." };
+    }
+    const sessionId = sess.id as string;
+
+    const { data: teamRow, error: te } = await supabase
+      .from("teams")
+      .select("id, session_id")
+      .eq("id", teamId)
+      .maybeSingle();
+    if (te) return { ok: false, error: te.message };
+    if (!teamRow?.id) return { ok: false, error: "Echipa nu există." };
+    if (String((teamRow as any).session_id) !== sessionId) {
+      return { ok: false, error: "Echipa nu aparține acestei sesiuni." };
+    }
+
+    const { data: pl, error: pe } = await supabase
+      .from("players")
+      .select("id, session_id")
+      .eq("id", playerId)
+      .maybeSingle();
+    if (pe) return { ok: false, error: pe.message };
+    if (!pl?.id) return { ok: false, error: "Jucător inexistent." };
+    if (String((pl as any).session_id) !== sessionId) {
+      return { ok: false, error: "Jucătorul nu aparține acestei sesiuni." };
+    }
+
+    const { error } = await supabase
+      .from("players")
+      .update({ team_id: teamId })
+      .eq("id", playerId);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error && e.message ? e.message : "Eroare la alocare echipă.";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function createTeamsForSessionAdmin(input: {
+  sessionId: string;
+  names: string[];
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sessionId = input.sessionId.trim();
+  if (!isUuid(sessionId)) return { ok: false, error: "ID sesiune invalid." };
+  const auth = await requireAdminForSession(sessionId);
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const names = (input.names ?? []).map((n) => String(n).trim()).filter(Boolean);
+  if (names.length < 2) {
+    return { ok: false, error: "Adaugă cel puțin 2 echipe." };
+  }
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { error: ue } = await supabase
+      .from("sessions")
+      .update({ team_mode: true })
+      .eq("id", sessionId);
+    if (ue) return { ok: false, error: ue.message };
+
+    const { data: existing, error: ee } = await supabase
+      .from("teams")
+      .select("id")
+      .eq("session_id", sessionId)
+      .limit(1);
+    if (ee) return { ok: false, error: ee.message };
+    if ((existing ?? []).length > 0) {
+      return { ok: true };
+    }
+
+    const payload = names.slice(0, 12).map((name) => ({ session_id: sessionId, name }));
+    const { error } = await supabase.from("teams").insert(payload);
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error && e.message ? e.message : "Eroare la creare echipe.";
+    return { ok: false, error: msg };
+  }
 }
 
 export async function resolveResumeRoute(input: {
@@ -1202,7 +1786,7 @@ export async function resolveResumeRoute(input: {
 
   const { data: sess, error: sessErr } = await supabase
     .from("sessions")
-    .select("id, status, ended_at, expires_at, pin")
+    .select("id, status, ended_at, expires_at, pin, results_published_at")
     .eq("pin", pin)
     .maybeSingle();
 
@@ -1231,7 +1815,11 @@ export async function resolveResumeRoute(input: {
     return { ok: true, route: `/lobby/${encodeURIComponent(pin)}` };
   }
   if (status === "finished") {
-    return { ok: true, route: `/game/results/${encodeURIComponent(pin)}` };
+    const published = (sess as any)?.results_published_at as string | null | undefined;
+    if (published) {
+      return { ok: true, route: `/game/results/${encodeURIComponent(pin)}` };
+    }
+    return { ok: true, route: `/game/player/${encodeURIComponent(pin)}` };
   }
   // question_active / showing_results
   return { ok: true, route: `/game/player/${encodeURIComponent(pin)}` };
@@ -1245,29 +1833,7 @@ export async function pingLobbyPresence(): Promise<PingLobbyPresenceResult> {
     if (!isUuid(playerId)) {
       return { ok: false, error: "Nu ești autentificat ca jucător." };
     }
-    const pin = normalizeJoinPin(
-      cookieStore.get(PLAYER_SESSION_PIN_COOKIE)?.value ?? "",
-    );
-    if (!pin) {
-      return { ok: false, error: "PIN lipsă." };
-    }
-
     const supabase = createSupabaseAdminClient();
-
-    const { data: sess, error: sessErr } = await supabase
-      .from("sessions")
-      .select("id, status")
-      .eq("pin", pin)
-      .maybeSingle();
-
-    if (sessErr) return { ok: false, error: sessErr.message };
-    if (!sess?.id) return { ok: false, error: "Sesiune inexistentă." };
-
-    if (String(sess.status) !== "lobby") {
-      return { ok: true };
-    }
-
-    const sessionId = sess.id as string;
 
     const { data: playerRow, error: pErr } = await supabase
       .from("players")
@@ -1276,8 +1842,24 @@ export async function pingLobbyPresence(): Promise<PingLobbyPresenceResult> {
       .maybeSingle();
 
     if (pErr) return { ok: false, error: pErr.message };
-    if (!playerRow?.id || String(playerRow.session_id) !== sessionId) {
-      return { ok: false, error: "Player invalid pentru această sesiune." };
+    if (!playerRow?.id) {
+      return { ok: false, error: "Player invalid." };
+    }
+
+    const sessionId = String((playerRow as any).session_id ?? "");
+    if (!isUuid(sessionId)) {
+      return { ok: false, error: "Sesiune invalidă pentru acest player." };
+    }
+
+    const { data: sess, error: sessErr } = await supabase
+      .from("sessions")
+      .select("id, status")
+      .eq("id", sessionId)
+      .maybeSingle();
+    if (sessErr) return { ok: false, error: sessErr.message };
+    if (!sess?.id) return { ok: false, error: "Sesiune inexistentă." };
+    if (String((sess as any).status ?? "") !== "lobby") {
+      return { ok: true };
     }
 
     const { error: upErr } = await supabase
@@ -1305,7 +1887,7 @@ export async function startGame(sessionId: string): Promise<StartGameResult> {
 
   const { data: existing, error: readError } = await supabase
     .from("sessions")
-    .select("id, status, quiz_id, question_count")
+    .select("id, status, quiz_id, question_count, team_mode")
     .eq("id", sessionId)
     .maybeSingle();
 
@@ -1320,6 +1902,24 @@ export async function startGame(sessionId: string): Promise<StartGameResult> {
       ok: false,
       error: "Jocul a fost deja pornit sau sesiunea nu mai este în lobby.",
     };
+  }
+
+  if (Boolean((existing as any).team_mode ?? false)) {
+    const { count, error: cErr } = await supabase
+      .from("players")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .is("team_id", null);
+    if (cErr) {
+      return { ok: false, error: cErr.message };
+    }
+    if ((count ?? 0) > 0) {
+      return {
+        ok: false,
+        error:
+          "Team mode: nu pot porni jocul — există participanți fără echipă. Așteaptă să-și aleagă toți echipa.",
+      };
+    }
   }
 
   const quizIdRow = existing.quiz_id as string | undefined;
@@ -1373,6 +1973,75 @@ export async function startGame(sessionId: string): Promise<StartGameResult> {
   }
 
   return { ok: true };
+}
+
+export async function startGameAdmin(sessionIdRaw: string): Promise<StartGameResult> {
+  const sessionId = sessionIdRaw.trim();
+  if (!isUuid(sessionId)) return { ok: false, error: "ID sesiune invalid." };
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data: existing, error: readError } = await supabase
+      .from("sessions")
+      .select("id, status, quiz_id, question_count, team_mode")
+      .eq("id", sessionId)
+      .maybeSingle();
+    if (readError) return { ok: false, error: readError.message };
+    if (!existing) return { ok: false, error: "Sesiunea nu există." };
+    if ((existing as any).status !== "lobby") {
+      return {
+        ok: false,
+        error: "Sesiunea nu mai este în lobby.",
+      };
+    }
+    if (Boolean((existing as any).team_mode ?? false)) {
+      const { count, error: cErr } = await supabase
+        .from("players")
+        .select("*", { count: "exact", head: true })
+        .eq("session_id", sessionId)
+        .is("team_id", null);
+      if (cErr) return { ok: false, error: cErr.message };
+      if ((count ?? 0) > 0) {
+        return {
+          ok: false,
+          error:
+            "Team mode: nu pot porni jocul — există participanți fără echipă.",
+        };
+      }
+    }
+    const quizIdRow = (existing as any).quiz_id as string | undefined;
+    if (!quizIdRow) return { ok: false, error: "Sesiune fără quiz." };
+    const total = await countQuestionsForQuiz(supabase, quizIdRow);
+    if (total < 1) {
+      return {
+        ok: false,
+        error: "Quiz-ul ales nu are întrebări în baza de date.",
+      };
+    }
+    const now = new Date().toISOString();
+    const { data: updated, error: updateError } = await supabase
+      .from("sessions")
+      .update({
+        status: "question_active",
+        started_at: now,
+        current_question_index: 0,
+        current_question_started_at: now,
+      })
+      .eq("id", sessionId)
+      .eq("status", "lobby")
+      .select("id")
+      .maybeSingle();
+    if (updateError) return { ok: false, error: updateError.message };
+    if (!updated) {
+      return {
+        ok: false,
+        error: "Nu s-a putut porni jocul (sesiunea a fost modificată).",
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error && e.message ? e.message : "Eroare la start.";
+    return { ok: false, error: msg };
+  }
 }
 
 /** Compatibilitate cu codul care folosea `startSession`. */
@@ -1438,6 +2107,85 @@ export async function showRoundResults(
     }
     return { ok: false, error: "Nu s-au putut afișa rezultatele." };
   }
+
+  // After locking in results, update streaks and reward pending pick at streak 3.
+  try {
+    const { data: sessMeta } = await supabase
+      .from("sessions")
+      .select("id, quiz_id, current_question_index, question_count, question_seed, randomize_questions, pin")
+      .eq("id", sessionId)
+      .maybeSingle();
+    const quizId = (sessMeta as any)?.quiz_id as string | undefined;
+    if (quizId) {
+      const ordered = await fetchOrderedQuizQuestions(supabase, quizId);
+      const seedVal = (sessMeta as any)?.question_seed as number | null | undefined;
+      const seed =
+        typeof seedVal === "number" && Number.isFinite(seedVal) && seedVal > 0
+          ? Math.floor(seedVal)
+          : hashStringToSeed(String((sessMeta as any)?.pin ?? sessionId));
+      const randomize = ((sessMeta as any)?.randomize_questions as boolean | null) ?? true;
+      const shuffled = randomize ? seededShuffle(ordered, seed) : ordered;
+      const rawLimit = (sessMeta as any)?.question_count as number | null | undefined;
+      const limit =
+        typeof rawLimit === "number" && Number.isFinite(rawLimit) && rawLimit > 0
+          ? Math.min(shuffled.length, Math.floor(rawLimit))
+          : shuffled.length;
+      const effective = shuffled.slice(0, limit);
+      const qIdx = Number((sessMeta as any)?.current_question_index ?? -1);
+      const q = effective[qIdx];
+      if (q) {
+        const { data: respRows } = await supabase
+          .from("round_responses")
+          .select("player_id, selected_option_index, selected_option_indices")
+          .eq("session_id", sessionId)
+          .eq("question_index", qIdx);
+        const byPlayer = new Map<string, { selIdx: number | null; selArr: unknown }>();
+        for (const r of respRows ?? []) {
+          byPlayer.set(String((r as any).player_id), {
+            selIdx:
+              (r as any).selected_option_index == null
+                ? null
+                : Number((r as any).selected_option_index),
+            selArr: (r as any).selected_option_indices,
+          });
+        }
+        const { data: players } = await supabase
+          .from("players")
+          .select("id, correct_streak, pending_powerup_reward")
+          .eq("session_id", sessionId);
+        for (const p of players ?? []) {
+          const pid = String((p as any).id ?? "");
+          const prevStreak = Math.max(0, Math.floor(Number((p as any).correct_streak ?? 0)));
+          const pending = Boolean((p as any).pending_powerup_reward ?? false);
+          const ans = byPlayer.get(pid);
+          let perfect = false;
+          if (q.type === "multi_select") {
+            const correct = new Set<number>((q.correctAnswerIndices ?? []).map((x) => Math.floor(Number(x))));
+            const sel = Array.isArray(ans?.selArr) ? ans!.selArr : [];
+            const picked = new Set<number>(
+              (sel as any[]).map((x) => Math.floor(Number(x))).filter((x) => Number.isFinite(x)),
+            );
+            perfect = correct.size > 0 && picked.size === correct.size && [...correct].every((i) => picked.has(i));
+          } else {
+            const idx = ans?.selIdx;
+            perfect = typeof idx === "number" && q.correctAnswerIndex === Math.floor(idx);
+          }
+          const nextStreak = perfect ? prevStreak + 1 : 0;
+          const nextPending = pending || nextStreak === 3;
+          await supabase
+            .from("players")
+            .update({
+              correct_streak: nextStreak,
+              pending_powerup_reward: nextPending,
+            })
+            .eq("id", pid);
+        }
+      }
+    }
+  } catch {
+    // non-blocking; showing results should still succeed
+  }
+
   return { ok: true };
 }
 
@@ -1588,6 +2336,7 @@ export async function proceedAfterResults(
       .update({
         status: "finished",
         ended_at: new Date().toISOString(),
+        results_published_at: null,
       })
       .eq("id", sessionId)
       .eq("status", "showing_results");
@@ -1624,6 +2373,33 @@ export async function startCurrentQuestionTimer(
   if (!auth.ok) return { ok: false, error: auth.error };
   const supabase = createSupabaseAdminClient();
   const now = new Date().toISOString();
+
+  // Team mode gate: don't start the round until every player picked a team.
+  const { data: sessMeta, error: metaErr } = await supabase
+    .from("sessions")
+    .select("id, team_mode")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (metaErr) {
+    return { ok: false, error: metaErr.message };
+  }
+  if (Boolean((sessMeta as any)?.team_mode ?? false)) {
+    const { count, error: cErr } = await supabase
+      .from("players")
+      .select("*", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .is("team_id", null);
+    if (cErr) {
+      return { ok: false, error: cErr.message };
+    }
+    if ((count ?? 0) > 0) {
+      return {
+        ok: false,
+        error:
+          "Team mode: nu pot porni întrebarea încă — există participanți fără echipă. Așteaptă să-și aleagă toți echipa.",
+      };
+    }
+  }
 
   const { data: updated, error } = await supabase
     .from("sessions")
@@ -1686,7 +2462,7 @@ export async function quitGameSession(
 
   const { error } = await supabase
     .from("sessions")
-    .update({ status: "finished", ended_at: now })
+    .update({ status: "finished", ended_at: now, results_published_at: null })
     .eq("id", sessionId)
     .in("status", ["lobby", "question_active", "showing_results"]);
 
@@ -1696,9 +2472,37 @@ export async function quitGameSession(
   return { ok: true };
 }
 
+/** Publică clasamentul final către jucători (după ce sesiunea e finished). */
+export async function publishFinalResults(
+  sessionId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireAdminForSession(sessionId);
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const supabase = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("sessions")
+    .update({ results_published_at: now })
+    .eq("id", sessionId)
+    .eq("status", "finished")
+    .is("results_published_at", null);
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 export async function getHostCorrectOptionIndex(
   sessionId: string,
-): Promise<{ ok: true; correctIndex: number } | { ok: false; error: string }> {
+): Promise<
+  | {
+      ok: true;
+      questionType: "single" | "true_false" | "multi_select";
+      correctIndex: number | null;
+      correctIndices: number[] | null;
+    }
+  | { ok: false; error: string }
+> {
   const auth = await requireAdminForSession(sessionId);
   if (!auth.ok) return { ok: false, error: auth.error };
   const supabase = createSupabaseAdminClient();
@@ -1732,7 +2536,20 @@ export async function getHostCorrectOptionIndex(
   const qIdx = sess.current_question_index as number;
   const q = effective[qIdx];
   if (!q) return { ok: false, error: "Întrebare invalidă." };
-  return { ok: true, correctIndex: q.correctAnswerIndex };
+  if (q.type === "multi_select") {
+    return {
+      ok: true,
+      questionType: q.type,
+      correctIndex: null,
+      correctIndices: Array.from(q.correctAnswerIndices ?? []),
+    };
+  }
+  return {
+    ok: true,
+    questionType: q.type,
+    correctIndex: q.correctAnswerIndex,
+    correctIndices: null,
+  };
 }
 
 /**
@@ -1742,10 +2559,10 @@ export async function submitAnswer(
   pinRaw: string,
   playerId: string,
   questionId: string,
-  answerIndex: number,
+  answer: number | number[],
 ): Promise<SubmitAnswerResult> {
   const pin = normalizeJoinPin(pinRaw);
-  if (!pin || answerIndex < 0) {
+  if (!pin) {
     return { ok: false, error: "Date invalide." };
   }
 
@@ -1780,7 +2597,7 @@ export async function submitAnswer(
 
   const { data: playerRow } = await supabase
     .from("players")
-    .select("session_id")
+    .select("id, session_id, powerups, active_powerup, active_powerup_uses, active_powerup_question_index")
     .eq("id", playerId)
     .maybeSingle();
 
@@ -1818,21 +2635,10 @@ export async function submitAnswer(
     return { ok: false, error: "Întrebarea nu corespunde rundei curente." };
   }
 
-  if (answerIndex >= questionDef.options.length) {
-    return { ok: false, error: "Variantă invalidă." };
-  }
-
-  const correct = questionDef.correctAnswerIndex === answerIndex;
   const answeredAt = new Date();
   const roundStarted = session.current_question_started_at
     ? new Date(session.current_question_started_at as string)
     : null;
-  const points = computeRoundPoints(
-    correct,
-    answeredAt,
-    roundStarted,
-    questionDef.timeLimit,
-  );
 
   if (roundStarted) {
     const deadline = roundStarted.getTime() + questionDef.timeLimit * 1000;
@@ -1841,9 +2647,66 @@ export async function submitAnswer(
     }
   }
 
+  const selectedRaw: number[] = Array.isArray(answer) ? answer : [answer];
+  const selected: number[] = [];
+  for (const v of selectedRaw) {
+    if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    const i = Math.floor(v);
+    if (i < 0 || i >= questionDef.options.length) continue;
+    if (!selected.includes(i)) selected.push(i);
+  }
+  if (selected.length < 1) {
+    return { ok: false, error: "Variantă invalidă." };
+  }
+
+  let fraction = 0;
+  let legacySelectedIndex: number | null = null;
+
+  if (questionDef.type === "multi_select") {
+    const correctSet = new Set<number>(
+      (questionDef.correctAnswerIndices ?? []).map((x) => Math.floor(Number(x))),
+    );
+    if (correctSet.size < 1) {
+      return { ok: false, error: "Întrebare invalidă (fără răspunsuri corecte)." };
+    }
+    const selectedSet = new Set<number>(selected);
+    let nCorrect = 0;
+    let nWrong = 0;
+    for (const i of selectedSet) {
+      if (correctSet.has(i)) nCorrect += 1;
+      else nWrong += 1;
+    }
+    fraction = Math.max(0, (nCorrect - nWrong) / correctSet.size);
+    legacySelectedIndex = null;
+  } else {
+    legacySelectedIndex = selected[0] ?? null;
+    const correct =
+      legacySelectedIndex != null &&
+      questionDef.correctAnswerIndex === legacySelectedIndex;
+    fraction = correct ? 1 : 0;
+  }
+
+  let points = computeRoundPointsByFraction(
+    fraction,
+    answeredAt,
+    roundStarted,
+    questionDef.timeLimit,
+  );
+
+  // Apply active power-ups (one-shot).
+  const activeType = normalizePowerUpType((playerRow as any).active_powerup);
+  const activeUses = Math.floor(Number((playerRow as any).active_powerup_uses ?? 0));
+  const activeQ = Number((playerRow as any).active_powerup_question_index ?? -1);
+  const isActiveForThis =
+    activeType != null && activeUses > 0 && Number.isFinite(activeQ) && Math.floor(activeQ) === qIdx;
+
+  if (isActiveForThis && activeType === "double_points" && points > 0) {
+    points = points * 2;
+  }
+
   const { data: existingResp } = await supabase
     .from("round_responses")
-    .select("id, selected_option_index, points_earned")
+    .select("id, selected_option_index, selected_option_indices, points_earned")
     .eq("player_id", playerId)
     .eq("question_index", qIdx)
     .maybeSingle();
@@ -1854,7 +2717,8 @@ export async function submitAnswer(
       session_id: sessionId,
       player_id: playerId,
       question_index: qIdx,
-      selected_option_index: answerIndex,
+      selected_option_index: legacySelectedIndex,
+      selected_option_indices: selected,
       points_earned: points,
     });
 
@@ -1878,6 +2742,16 @@ export async function submitAnswer(
             .eq("id", playerId);
         }
       }
+      if (isActiveForThis && activeType === "double_points" && activeUses > 0 && points > 0) {
+        await supabase
+          .from("players")
+          .update({
+            active_powerup: null,
+            active_powerup_uses: null,
+            active_powerup_question_index: null,
+          })
+          .eq("id", playerId);
+      }
       return { ok: true };
     }
   }
@@ -1890,16 +2764,24 @@ export async function submitAnswer(
   }
   const prevPoints = Number(existingResp?.points_earned ?? 0);
   const prevIdx = Number(existingResp?.selected_option_index ?? -1);
-  if (prevIdx === answerIndex) {
+  if (legacySelectedIndex != null && prevIdx === legacySelectedIndex) {
     return { ok: true };
   }
-  const delta = points - prevPoints;
+  let delta = points - prevPoints;
+
+  // Shield: prevent losing points on next wrong change (negative delta).
+  if (isActiveForThis && activeType === "shield" && delta < 0) {
+    delta = 0;
+    points = prevPoints;
+  }
 
   const { error: updErr } = await supabase
     .from("round_responses")
     .update({
-      selected_option_index: answerIndex,
+      selected_option_index: legacySelectedIndex,
+      selected_option_indices: selected,
       points_earned: points,
+      answered_at: answeredAt.toISOString(),
     })
     .eq("id", existingId);
 
@@ -1917,6 +2799,26 @@ export async function submitAnswer(
       await supabase
         .from("players")
         .update({ score: (pl.score as number) + delta })
+        .eq("id", playerId);
+    }
+  }
+
+  // Consume active power-up use if it applied (or was used to block loss).
+  if (isActiveForThis && activeType && activeUses > 0) {
+    const shouldConsume =
+      activeType === "double_points"
+        ? prevPoints !== points // only if it actually affected outcome
+        : activeType === "shield"
+          ? delta === 0 && prevPoints !== points // shield prevented change
+          : false;
+    if (shouldConsume) {
+      await supabase
+        .from("players")
+        .update({
+          active_powerup: null,
+          active_powerup_uses: null,
+          active_powerup_question_index: null,
+        })
         .eq("id", playerId);
     }
   }

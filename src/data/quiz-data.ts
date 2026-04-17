@@ -1,19 +1,34 @@
-/** Întrebări statice pentru MVP; indexul în sesiune (`current_question_index`) indică elementul activ. */
-export type QuizQuestionData = {
+export type QuestionType = "single" | "true_false" | "multi_select";
+
+export type QuizQuestionBase = {
   id: string;
   text: string;
-  /** 2–4 variante (ca în DB `questions.options`). */
+  /** Referință biblică (ex. "Geneza 1:1"). */
+  reference?: string | null;
+  /** 2–4 variante (TF are exact 2). */
   options: readonly string[];
-  correctAnswerIndex: number;
   /** Durata rundei în secunde. */
   timeLimit: number;
+  type: QuestionType;
 };
+
+/** Întrebări statice pentru MVP; indexul în sesiune (`current_question_index`) indică elementul activ. */
+export type QuizQuestionData =
+  | (QuizQuestionBase & {
+      type: "single" | "true_false";
+      correctAnswerIndex: number;
+    })
+  | (QuizQuestionBase & {
+      type: "multi_select";
+      correctAnswerIndices: readonly number[];
+    });
 
 export const QUIZ_QUESTIONS: QuizQuestionData[] = [
   {
     id: "q-capital-fr",
     text: "Care este capitala Franței?",
     options: ["Lyon", "Marseille", "Paris", "Nice"],
+    type: "single",
     correctAnswerIndex: 2,
     timeLimit: 20,
   },
@@ -21,6 +36,7 @@ export const QUIZ_QUESTIONS: QuizQuestionData[] = [
     id: "q-planets",
     text: "Câte planete are sistemul solar (model clasic, fără Pluton)?",
     options: ["7", "8", "9", "10"],
+    type: "single",
     correctAnswerIndex: 1,
     timeLimit: 25,
   },
@@ -33,6 +49,7 @@ export const QUIZ_QUESTIONS: QuizQuestionData[] = [
       "High Transfer Meta List",
       "Home Text Modern Link",
     ],
+    type: "single",
     correctAnswerIndex: 1,
     timeLimit: 30,
   },

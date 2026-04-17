@@ -19,6 +19,8 @@ export default function HostPage() {
   );
   const [selectedQuizId, setSelectedQuizId] = useState("");
   const [desiredQuestionCount, setDesiredQuestionCount] = useState<number>(10);
+  const [teamMode, setTeamMode] = useState(false);
+  const [teamNamesRaw, setTeamNamesRaw] = useState("Echipa 1\nEchipa 2");
   const [quizzesError, setQuizzesError] = useState<string | null>(null);
   const [quizzesLoading, setQuizzesLoading] = useState(true);
   const [selectedQuizTotal, setSelectedQuizTotal] = useState<number | null>(null);
@@ -75,8 +77,19 @@ export default function HostPage() {
         selectedQuizId,
         desiredQuestionCount,
         true,
+        teamMode,
       );
       if (result.ok) {
+        if (teamMode) {
+          const names = teamNamesRaw
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const { createTeamsForSessionAdmin } = await import(
+            "@/app/actions/game-actions"
+          );
+          await createTeamsForSessionAdmin({ sessionId: result.sessionId, names });
+        }
         router.push(
           `/host/lobby?pin=${encodeURIComponent(result.pin)}&sessionId=${encodeURIComponent(
             result.sessionId,
@@ -197,6 +210,33 @@ export default function HostPage() {
                     className="min-h-12 rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-3 py-2 text-gray-100 shadow-inner disabled:opacity-50"
                   />
                 </label>
+              </div>
+              <div className="mt-2 rounded-2xl border border-gray-700/50 bg-[#0a0f1e] p-4">
+                <label className="flex items-center justify-between gap-3 text-sm font-semibold text-gray-100">
+                  Team mode
+                  <input
+                    type="checkbox"
+                    checked={teamMode}
+                    onChange={(e) => setTeamMode(e.target.checked)}
+                    disabled={loading}
+                    className="size-5 accent-[#f59e0b]"
+                  />
+                </label>
+                {teamMode ? (
+                  <label className="mt-3 block space-y-2 text-sm font-medium text-gray-200">
+                    Nume echipe (câte una pe linie)
+                    <textarea
+                      rows={4}
+                      value={teamNamesRaw}
+                      onChange={(e) => setTeamNamesRaw(e.target.value)}
+                      disabled={loading}
+                      className="w-full rounded-2xl border border-gray-700/50 bg-[#1a2236] px-3 py-2 text-gray-100 shadow-inner disabled:opacity-50"
+                    />
+                    <p className="text-xs text-gray-400">
+                      Minim 2 echipe. Se creează automat la pornirea sesiunii.
+                    </p>
+                  </label>
+                ) : null}
               </div>
             {selectedQuizTotal != null && (
               <p className="text-xs text-gray-400">

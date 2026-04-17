@@ -22,16 +22,20 @@ type DbQuestion = {
   quiz_id: string;
   prompt: string;
   options: string[];
+  question_type?: "single" | "true_false" | "multi_select";
+  correct_option_indices?: number[] | null;
   correct_option_index: number;
   order_index: number;
   time_limit_seconds: number | null;
 };
 
 type InsertRoundResponse = {
+  id: string;
   session_id: string;
   player_id: string;
   question_index: number;
-  selected_option_index: number;
+  selected_option_index: number | null;
+  selected_option_indices?: number[];
   points_earned: number;
 };
 
@@ -43,6 +47,12 @@ function makeSupabaseMock(db: {
 }) {
   type FilterValue = string | number | boolean | null;
   type PlayerUpdatePatch = { score?: number };
+  type RoundResponseUpdatePatch = {
+    selected_option_index?: number | null;
+    selected_option_indices?: number[];
+    points_earned?: number;
+    answered_at?: string;
+  };
 
   const state = {
     table: "" as string,
@@ -50,7 +60,7 @@ function makeSupabaseMock(db: {
     orderBy: null as null | { col: string; asc: boolean },
     selectCols: "" as string,
     mode: "select" as "select" | "update",
-    updatePatch: null as PlayerUpdatePatch | null,
+    updatePatch: null as (PlayerUpdatePatch | RoundResponseUpdatePatch) | null,
   };
 
   const api = {
@@ -76,8 +86,16 @@ function makeSupabaseMock(db: {
             if (state.table === "players") {
               const id = state.filters.get("id");
               const p = db.players.find((x) => x.id === id);
-              if (p && typeof state.updatePatch?.score === "number") {
-                p.score = state.updatePatch.score;
+              const patch = state.updatePatch as PlayerUpdatePatch | null;
+              if (p && patch && typeof patch.score === "number") {
+                p.score = patch.score;
+              }
+            }
+            if (state.table === "round_responses") {
+              const id = state.filters.get("id");
+              const r = db.round_responses.find((x) => x.id === id);
+              if (r) {
+                Object.assign(r, state.updatePatch ?? {});
               }
             }
             return onFulfilled({ data: null, error: null });
@@ -109,7 +127,14 @@ function makeSupabaseMock(db: {
     },
     async insert(payload: unknown) {
       if (state.table === "round_responses") {
-        db.round_responses.push(payload as InsertRoundResponse);
+        const p = payload as Omit<InsertRoundResponse, "id"> & { id?: string };
+        db.round_responses.push({
+          ...(p as any),
+          id:
+            typeof p.id === "string" && p.id
+              ? p.id
+              : `rr_${db.round_responses.length + 1}`,
+        } as InsertRoundResponse);
         return { error: null };
       }
       // used in tests only for round_responses
@@ -162,7 +187,9 @@ function makeSupabaseMock(db: {
           id: r.id,
           prompt: r.prompt,
           options: r.options,
+          question_type: (r as any).question_type ?? "single",
           correct_option_index: r.correct_option_index,
+          correct_option_indices: (r as any).correct_option_indices ?? null,
           time_limit_seconds: r.time_limit_seconds,
           order_index: r.order_index,
         }));
@@ -307,6 +334,58 @@ describe("submitAnswer (integration-light)", () => {
       expect(res.error).toMatch(/expirat/i);
     }
     expect(db.round_responses).toHaveLength(0);
+  });
+
+  it("multi_select: partial scoring + clamp to 0", async () => {
+    const db = {
+      sessions: [
+        {
+          id: "s1",
+          pin: "001234",
+          status: "question_active",
+          quiz_id: "qz1",
+          current_question_index: 0,
+          current_question_started_at: new Date(Date.now() - 1000).toISOString(),
+          question_count: 10,
+          question_seed: 1,
+          randomize_questions: false,
+        },
+      ] as DbSession[],
+      players: [{ id: "p1", session_id: "s1", score: 0 }] as DbPlayer[],
+      questions: [
+        {
+          id: "qa",
+          quiz_id: "qz1",
+          prompt: "Selectează corecte",
+          options: ["a", "b", "c", "d"],
+          question_type: "multi_select",
+          correct_option_indices: [0, 2],
+          correct_option_index: 0,
+          order_index: 0,
+          time_limit_seconds: 30,
+        },
+      ] as DbQuestion[],
+      round_responses: [] as InsertRoundResponse[],
+    };
+
+    supabaseForTest = makeSupabaseMock(db);
+    const { submitAnswer } = await import("./game-actions");
+
+    // 1 correct (0) and 1 wrong (1) => (1-1)/2 = 0 => clamp => 0 points, but stored.
+    const res = await submitAnswer("1234", "p1", "qa", [0, 1]);
+    expect(res).toEqual({ ok: true });
+    expect(db.round_responses).toHaveLength(1);
+    expect(db.round_responses[0]?.selected_option_indices).toEqual([0, 1]);
+    expect(db.round_responses[0]?.points_earned).toBe(0);
+    expect(db.players[0]?.score).toBe(0);
+
+    // Change answer: select both correct => (2-0)/2 = 1 => >0 points.
+    const res2 = await submitAnswer("1234", "p1", "qa", [0, 2]);
+    expect(res2).toEqual({ ok: true });
+    expect(db.round_responses).toHaveLength(1);
+    expect(db.round_responses[0]?.selected_option_indices).toEqual([0, 2]);
+    expect(db.round_responses[0]?.points_earned).toBeGreaterThan(0);
+    expect(db.players[0]?.score).toBeGreaterThan(0);
   });
 });
 

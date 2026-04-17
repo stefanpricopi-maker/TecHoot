@@ -82,4 +82,16 @@ describe("validateQuizImportItemDraft", () => {
       }),
     ).not.toBeNull();
   });
+
+  it("accepts long references (up to 800 chars)", () => {
+    const longRef = "Exod 19:16 - " + "x".repeat(300);
+    expect(
+      validateQuizImportItemDraft({
+        prompt: "x",
+        reference: longRef,
+        options: ["a", "b"],
+        correctOptionIndex: 0,
+      }),
+    ).toBeNull();
+  });
 });

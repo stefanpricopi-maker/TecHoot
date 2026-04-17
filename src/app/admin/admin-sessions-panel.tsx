@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   forceFinishSessionAdmin,
   listSessionsAdminPage,
+  publishFinalResults,
+  startGameAdmin,
   type AdminSessionRowDto,
 } from "@/app/actions/game-actions";
 
@@ -66,6 +68,50 @@ export function AdminSessionsPanel() {
     }
   };
 
+  const start = async (row: AdminSessionRowDto) => {
+    if (
+      !window.confirm(
+        `Pornești jocul pentru PIN ${row.pin}? (În Team mode pornește doar dacă toți au echipă.)`,
+      )
+    ) {
+      return;
+    }
+    setBusyId(row.id);
+    setErr(null);
+    try {
+      const res = await startGameAdmin(row.id);
+      if (!res.ok) {
+        setErr(res.error);
+        return;
+      }
+      void load(page);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const publish = async (row: AdminSessionRowDto) => {
+    if (
+      !window.confirm(
+        `Publici clasamentul pentru PIN ${row.pin}? Jucătorii vor vedea rezultatele.`,
+      )
+    ) {
+      return;
+    }
+    setBusyId(row.id);
+    setErr(null);
+    try {
+      const res = await publishFinalResults(row.id);
+      if (!res.ok) {
+        setErr(res.error);
+        return;
+      }
+      void load(page);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <section className="space-y-6 rounded-2xl border border-gray-700/50 bg-[#1a2236] p-8 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
       <h2 className="text-base font-extrabold tracking-tight text-gray-100">
@@ -108,6 +154,16 @@ export function AdminSessionsPanel() {
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
+                {s.status === "lobby" && (
+                  <button
+                    type="button"
+                    disabled={busyId === s.id}
+                    onClick={() => void start(s)}
+                    className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-200 disabled:opacity-40"
+                  >
+                    Start
+                  </button>
+                )}
                 {s.status !== "finished" && (
                   <button
                     type="button"
@@ -117,6 +173,24 @@ export function AdminSessionsPanel() {
                   >
                     Închide forțat
                   </button>
+                )}
+                {s.status === "finished" && !s.results_published_at && (
+                  <button
+                    type="button"
+                    disabled={busyId === s.id}
+                    onClick={() => void publish(s)}
+                    className="rounded-2xl border border-[#f59e0b]/40 bg-[#f59e0b]/10 px-4 py-2 text-xs font-bold text-[#f59e0b] disabled:opacity-40"
+                  >
+                    Publică clasamentul
+                  </button>
+                )}
+                {s.status === "finished" && s.results_published_at && (
+                  <Link
+                    href={`/game/results/${encodeURIComponent(s.pin)}`}
+                    className="rounded-2xl border border-[#f59e0b]/40 bg-[#f59e0b]/10 px-4 py-2 text-xs font-bold text-[#f59e0b]"
+                  >
+                    Clasament
+                  </Link>
                 )}
                 <Link
                   href={`/game/host/${encodeURIComponent(s.pin)}`}

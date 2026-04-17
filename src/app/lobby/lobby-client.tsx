@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
-import { pingLobbyPresence } from "@/app/actions/game-actions";
+import { joinTeam, listTeamsForPin, pingLobbyPresence } from "@/app/actions/game-actions";
 import { createSupabaseClient } from "@/lib/supabase";
 import {
   isLobbyPresenceFresh,
@@ -45,6 +45,12 @@ export function LobbyClient({
     questionCount: number | null;
     randomizeQuestions: boolean | null;
   } | null>(null);
+  const [teamMode, setTeamMode] = useState(false);
+  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
+  const [myTeamId, setMyTeamId] = useState<string | null>(null);
+  const [myTeamName, setMyTeamName] = useState<string | null>(null);
+  const [teamErr, setTeamErr] = useState<string | null>(null);
+  const [teamBusy, setTeamBusy] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [lobbySessionId, setLobbySessionId] = useState<string | null>(null);
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
@@ -64,12 +70,12 @@ export function LobbyClient({
   }, []);
 
   useEffect(() => {
-    if (!pinMatches || lobbySessionId == null) return;
+    if (lobbySessionId == null) return;
     const send = () => void pingLobbyPresence();
     send();
     const id = window.setInterval(send, LOBBY_HEARTBEAT_INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [pinMatches, lobbySessionId]);
+  }, [lobbySessionId]);
 
   useEffect(() => {
     if (normalizedPin == null) {
@@ -86,7 +92,7 @@ export function LobbyClient({
     void (async () => {
       const { data } = await supabase
         .from("sessions")
-        .select("id, status, question_count, randomize_questions, quizzes(title)")
+        .select("id, status, question_count, randomize_questions, team_mode, quizzes(title)")
         .eq("pin", normalizedPin)
         .maybeSingle();
 
@@ -103,6 +109,8 @@ export function LobbyClient({
         randomizeQuestions: (data as { randomize_questions?: boolean | null })
           ?.randomize_questions ?? null,
       });
+      const tm = Boolean((data as any)?.team_mode ?? false);
+      setTeamMode(tm);
 
       if (sessionId) {
         if (cancelled) return;
@@ -110,10 +118,30 @@ export function LobbyClient({
 
         const { data: plist } = await supabase
           .from("players")
-          .select("id, session_id, display_name, score, joined_at, last_seen_at")
+          .select("id, session_id, display_name, score, joined_at, last_seen_at, team_id, teams(name)")
           .eq("session_id", sessionId)
           .order("display_name", { ascending: true });
         setPlayers(sortLobbyPlayersAlpha((plist ?? []) as Player[]));
+
+        if (tm) {
+          const tRes = await listTeamsForPin(normalizedPin);
+          if (tRes.ok) {
+            setTeams(tRes.teams);
+            setTeamErr(null);
+          } else {
+            setTeamErr(tRes.error);
+          }
+          const mine = (plist ?? []).find((p: any) => p.id === myPlayerId) as any;
+          setMyTeamId((mine?.team_id as string | null) ?? null);
+          setMyTeamName(
+            mine?.team_id ? String(mine?.teams?.name ?? "") || null : null,
+          );
+        } else {
+          setTeams([]);
+          setMyTeamId(null);
+          setMyTeamName(null);
+          setTeamErr(null);
+        }
 
         if (playersChannelRef.current) {
           void supabase.removeChannel(playersChannelRef.current);
@@ -171,6 +199,9 @@ export function LobbyClient({
         if (!pinMatches) {
           return;
         }
+        if (tm && !myTeamId) {
+          return;
+        }
         redirectedRef.current = true;
         router.replace(`/game/player/${encodeURIComponent(normalizedPin)}`);
       }
@@ -207,6 +238,9 @@ export function LobbyClient({
             if (!pinMatches) {
               return;
             }
+            if (teamMode && !myTeamId) {
+              return;
+            }
             redirectedRef.current = true;
             router.replace(`/game/player/${encodeURIComponent(normalizedPin)}`);
           }
@@ -222,7 +256,7 @@ export function LobbyClient({
         playersChannelRef.current = null;
       }
     };
-  }, [normalizedPin, pinMatches, router]);
+  }, [normalizedPin, pinMatches, router, myPlayerId, teamMode, myTeamId]);
 
   const visiblePlayers = useMemo(() => {
     return sortLobbyPlayersAlpha(
@@ -233,6 +267,35 @@ export function LobbyClient({
       ),
     );
   }, [players, myPlayerId, nowMs]);
+
+  const myTeamMembers = useMemo(() => {
+    if (!teamMode || !myTeamId) return [];
+    return sortLobbyPlayersAlpha(
+      visiblePlayers.filter((p: any) => (p as any).team_id === myTeamId),
+    );
+  }, [teamMode, myTeamId, visiblePlayers]);
+
+  const pickTeam = async (teamId: string) => {
+    if (!normalizedPin || !teamId) return;
+    if (!myPlayerId) {
+      setTeamErr("Lipsește jucătorul. Re-join la sesiune.");
+      return;
+    }
+    setTeamBusy(true);
+    setTeamErr(null);
+    try {
+      const res = await joinTeam(normalizedPin, myPlayerId, teamId);
+      if (!res.ok) {
+        setTeamErr(res.error);
+        return;
+      }
+      const picked = teams.find((t) => t.id === teamId);
+      setMyTeamId(teamId);
+      setMyTeamName(picked?.name ?? null);
+    } finally {
+      setTeamBusy(false);
+    }
+  };
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2rem,env(safe-area-inset-top))] text-gray-100">
@@ -256,6 +319,71 @@ export function LobbyClient({
               </Link>
               .
             </p>
+          )}
+
+          {teamMode && (
+            <div className="mt-6 rounded-2xl border border-gray-700/50 bg-[#0a0f1e] p-5 text-left">
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                Team mode
+              </p>
+              {myTeamId ? (
+                <>
+                  <p className="mt-2 text-sm font-semibold text-gray-100">
+                    Echipa ta:{" "}
+                    <span className="font-extrabold text-[#f59e0b]">
+                      {myTeamName ?? "—"}
+                    </span>
+                  </p>
+                  <p className="mt-2 text-xs text-gray-400">
+                    În echipa ta au intrat:
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {myTeamMembers.map((p) => (
+                      <li key={p.id} className="flex items-center gap-2">
+                        <UserCircle className="size-4 text-gray-500" />
+                        <span className="truncate text-gray-100">
+                          {p.display_name}
+                        </span>
+                      </li>
+                    ))}
+                    {myTeamMembers.length === 0 && (
+                      <li className="text-xs text-gray-500">—</li>
+                    )}
+                  </ul>
+                  <p className="mt-3 text-xs text-gray-400">
+                    Așteaptă ca Adminul să pornească jocul.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-2 text-sm text-gray-300">
+                    Alege o echipă ca să intri în lobby.
+                  </p>
+                  {teamErr && (
+                    <p className="mt-3 text-sm text-red-300">{teamErr}</p>
+                  )}
+                  <div className="mt-3 grid grid-cols-1 gap-2">
+                    {teams.length === 0 ? (
+                      <p className="text-xs text-gray-500">
+                        Nu există încă echipe. Așteaptă să le creeze gazda.
+                      </p>
+                    ) : (
+                      teams.map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          disabled={teamBusy}
+                          onClick={() => void pickTeam(t.id)}
+                          className="min-h-11 rounded-2xl border border-gray-700/50 bg-[#1a2236] px-4 py-2 text-left text-sm font-semibold text-gray-100 disabled:opacity-50"
+                        >
+                          {teamBusy ? "…" : t.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           )}
 
           {pinMatches && nickname && (

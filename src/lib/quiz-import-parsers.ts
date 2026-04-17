@@ -1,6 +1,7 @@
 /** Aceeași formă ca `ImportQuizQuestionItemInput` din server actions. */
 export type QuizImportItemDraft = {
   prompt: string;
+  reference?: string | null;
   options: string[];
   correctOptionIndex: number;
 };
@@ -10,6 +11,13 @@ export function validateQuizImportItemDraft(
 ): string | null {
   const prompt = item.prompt.trim();
   if (!prompt) return "Textul întrebării lipsește sau e gol.";
+  const ref =
+    item.reference == null ? "" : String(item.reference).trim();
+  // Allow long references (some include full verse text).
+  // Keep a sanity limit to avoid accidental huge pastes.
+  if (ref.length > 800) {
+    return "Referința e prea lungă (max 800 caractere).";
+  }
   const opts = item.options.map((o) => String(o).trim()).filter(Boolean);
   if (opts.length < 2 || opts.length > 4) {
     return "Sunt necesare între 2 și 4 variante (ne-goale).";
@@ -110,6 +118,7 @@ export function parseQuestionsCsv(
   const ix = {
     quiz_title: col("quiz_title"),
     prompt: col("prompt"),
+    reference: col("reference"),
     option_a: col("option_a"),
     option_b: col("option_b"),
     option_c: col("option_c"),
@@ -129,6 +138,7 @@ export function parseQuestionsCsv(
       continue;
     }
     const prompt = get(ix.prompt);
+    const reference = ix.reference >= 0 ? get(ix.reference) : "";
     const opts = [
       get(ix.option_a),
       get(ix.option_b),
@@ -160,6 +170,7 @@ export function parseQuestionsCsv(
       rowIndex: r,
       item: {
         prompt,
+        reference: reference.trim() ? reference.trim() : null,
         options: opts,
         correctOptionIndex: corr.index,
       },
@@ -193,6 +204,13 @@ export function parseJsonExodShape(raw: string): JsonParseExodResult {
     const o = el as Record<string, unknown>;
     const q = o.question ?? o.prompt;
     const prompt = typeof q === "string" ? q.trim() : "";
+    const refRaw =
+      o.reference ??
+      (o as any).Reference ??
+      (o as any).ref ??
+      (o as any).bible_reference ??
+      (o as any).bibleReference;
+    const reference = typeof refRaw === "string" ? refRaw.trim() : "";
     const optionsRaw = o.options;
     if (!Array.isArray(optionsRaw)) {
       return { ok: false, message: `Elementul ${i}: „options” trebuie să fie array.` };
@@ -209,6 +227,7 @@ export function parseJsonExodShape(raw: string): JsonParseExodResult {
           : NaN;
     items.push({
       prompt,
+      reference: reference ? reference : null,
       options,
       correctOptionIndex: Number.isFinite(idx) ? idx : 0,
     });
