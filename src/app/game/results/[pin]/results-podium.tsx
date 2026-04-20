@@ -6,6 +6,7 @@ import { MotionConfig, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Player } from "@/types/game";
+import { PlayerAvatar } from "@/components/player-avatar";
 
 import { WinnerConfetti } from "./winner-confetti";
 
@@ -326,9 +327,12 @@ function PodiumBlockSequenced({
             <p className="text-2xl sm:text-3xl" aria-hidden>
               {medal}
             </p>
-            <p className="mt-1 truncate px-0.5 text-xs font-bold text-gray-100 sm:text-sm">
-              {player.display_name}
-            </p>
+            <div className="mt-1 flex items-center justify-center gap-2 px-0.5">
+              <PlayerAvatar avatarKey={(player as any).avatar_key} size="sm" />
+              <p className="truncate text-xs font-bold text-gray-100 sm:text-sm">
+                {player.display_name}
+              </p>
+            </div>
             <p className="mt-0.5 font-mono text-lg font-extrabold tabular-nums text-[#f59e0b] sm:text-xl">
               {player.score}
             </p>

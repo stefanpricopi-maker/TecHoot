@@ -86,6 +86,7 @@ create table public.players (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references public.sessions (id) on delete cascade,
   display_name text not null,
+  avatar_key text not null default 'bible',
   score int not null default 0,
   joined_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now(),
@@ -106,6 +107,8 @@ create table public.round_responses (
   player_id uuid not null references public.players (id) on delete cascade,
   question_index int not null,
   selected_option_index smallint not null,
+  -- Time from question start → submission moment (used for "Cel mai rapid deget").
+  response_time_ms int,
   points_earned int not null default 0,
   answered_at timestamptz not null default now(),
   constraint round_responses_option_range check (

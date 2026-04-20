@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { joinTeam, listTeamsForPin, pingLobbyPresence } from "@/app/actions/game-actions";
+import { PlayerAvatar } from "@/components/player-avatar";
 import { createSupabaseClient } from "@/lib/supabase";
 import {
   isLobbyPresenceFresh,
@@ -118,7 +118,9 @@ export function LobbyClient({
 
         const { data: plist } = await supabase
           .from("players")
-          .select("id, session_id, display_name, score, joined_at, last_seen_at, team_id, teams(name)")
+          .select(
+            "id, session_id, display_name, avatar_key, score, joined_at, last_seen_at, team_id, teams(name)",
+          )
           .eq("session_id", sessionId)
           .order("display_name", { ascending: true });
         setPlayers(sortLobbyPlayersAlpha((plist ?? []) as Player[]));
@@ -340,7 +342,7 @@ export function LobbyClient({
                   <ul className="mt-2 space-y-1 text-sm">
                     {myTeamMembers.map((p) => (
                       <li key={p.id} className="flex items-center gap-2">
-                        <UserCircle className="size-4 text-gray-500" />
+                        <PlayerAvatar avatarKey={(p as any).avatar_key} size="sm" />
                         <span className="truncate text-gray-100">
                           {p.display_name}
                         </span>
@@ -447,14 +449,14 @@ export function LobbyClient({
                       key={p.id}
                       className="flex items-center gap-3 rounded-2xl border border-gray-700/40 bg-[#1a2236] px-3 py-2"
                     >
-                      <UserCircle
-                        className={`size-9 shrink-0 ${
+                      <PlayerAvatar
+                        avatarKey={(p as any).avatar_key}
+                        className={
                           myPlayerId === p.id
-                            ? "text-gray-100"
-                            : "text-[#f59e0b]/75"
-                        }`}
-                        strokeWidth={1.25}
-                        aria-hidden
+                            ? "border-gray-300/30"
+                            : "border-[#f59e0b]/25"
+                        }
+                        size="md"
                       />
                       <span className="truncate font-semibold text-gray-100">
                         {p.display_name}

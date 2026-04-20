@@ -135,6 +135,25 @@ export default async function GameSummaryPage({ params }: PageProps) {
         </div>
       </header>
 
+      {summary.fastestFinger ? (
+        <section className="mx-auto mt-8 max-w-5xl rounded-2xl border border-gray-700/50 bg-[#1a2236] p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+            Cel mai rapid deget
+          </p>
+          <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">
+            <p className="text-lg font-extrabold tracking-tight text-[#f59e0b]">
+              {summary.fastestFinger.displayName || "Jucător"}
+            </p>
+            <p className="font-mono text-sm font-extrabold tabular-nums text-gray-100">
+              {summary.fastestFinger.avgResponseTimeMs}ms{" "}
+              <span className="text-xs font-semibold text-gray-400">
+                (medie, {summary.fastestFinger.answersCount} răsp.)
+              </span>
+            </p>
+          </div>
+        </section>
+      ) : null}
+
       <div className="mx-auto mt-8 grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-gray-700/50 bg-[#1a2236] p-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] sm:p-6">
           <h2 className="text-sm font-extrabold uppercase tracking-wider text-gray-200">

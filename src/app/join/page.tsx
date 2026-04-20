@@ -5,15 +5,18 @@ import { useCallback, useEffect, useState } from "react";
 
 import { joinSession, resolveResumeRoute } from "@/app/actions/game-actions";
 import {
+  LS_AVATAR_KEY,
   LS_NICKNAME_KEY,
   LS_PIN_KEY,
   LS_PLAYER_ID_KEY,
 } from "@/lib/player-storage";
+import { AVATAR_OPTIONS, DEFAULT_AVATAR_KEY, isAvatarKey } from "@/lib/avatars";
 
 export default function JoinPage() {
   const router = useRouter();
   const [pin, setPin] = useState("");
   const [nickname, setNickname] = useState("");
+  const [avatarKey, setAvatarKey] = useState<string>(DEFAULT_AVATAR_KEY);
   const [resume, setResume] = useState<{
     pin: string;
     playerId: string;
@@ -38,6 +41,10 @@ export default function JoinPage() {
     const storedPin = window.localStorage.getItem(LS_PIN_KEY) ?? "";
     const storedPlayerId = window.localStorage.getItem(LS_PLAYER_ID_KEY) ?? "";
     const storedNickname = window.localStorage.getItem(LS_NICKNAME_KEY) ?? "";
+    const storedAvatar = window.localStorage.getItem(LS_AVATAR_KEY) ?? "";
+    if (storedAvatar && isAvatarKey(storedAvatar)) {
+      setAvatarKey(storedAvatar);
+    }
     if (storedPin && storedPlayerId && storedNickname) {
       setResume({
         pin: storedPin,
@@ -86,7 +93,7 @@ export default function JoinPage() {
     setError(null);
     setLoading(true);
     try {
-      const result = await joinSession(pin, nickname);
+      const result = await joinSession(pin, nickname, avatarKey);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -95,12 +102,16 @@ export default function JoinPage() {
         window.localStorage.setItem(LS_PLAYER_ID_KEY, result.playerId);
         window.localStorage.setItem(LS_NICKNAME_KEY, result.nickname);
         window.localStorage.setItem(LS_PIN_KEY, result.pin);
+        window.localStorage.setItem(
+          LS_AVATAR_KEY,
+          isAvatarKey(avatarKey) ? avatarKey : DEFAULT_AVATAR_KEY,
+        );
       }
       router.push(`/lobby/${encodeURIComponent(result.pin)}`);
     } finally {
       setLoading(false);
     }
-  }, [pin, nickname, router]);
+  }, [pin, nickname, avatarKey, router]);
 
   return (
     <div className="relative flex min-h-dvh flex-col items-center justify-center px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(2rem,env(safe-area-inset-top))] text-gray-100">
@@ -194,6 +205,85 @@ export default function JoinPage() {
               className="min-h-12 w-full rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-4 text-base text-gray-100 shadow-inner outline-none placeholder:text-gray-500 focus:border-[#f59e0b]/50 focus:ring-2 focus:ring-[#f59e0b]/25"
             />
           </label>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-100">Avatar</p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-5 gap-2">
+                {AVATAR_OPTIONS.filter((a) => a.gender === "f").map((a) => {
+                  const selected = avatarKey === a.key;
+                  return (
+                    <button
+                      key={a.key}
+                      type="button"
+                      onClick={() => setAvatarKey(a.key)}
+                      className={`min-h-12 rounded-2xl border px-0 text-sm font-extrabold shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98] ${
+                        selected
+                          ? "border-[#f59e0b]/60 bg-[#0a0f1e]"
+                          : "border-gray-700/50 bg-[#0a0f1e]/60"
+                      }`}
+                      aria-label={`Avatar: ${a.label}`}
+                      title={a.label}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={a.srcWebp}
+                        alt=""
+                        className="mx-auto h-9 w-9 rounded-xl object-cover"
+                        onError={(e) => {
+                          const img = e.currentTarget;
+                          const n = Number(img.dataset.fallbackStep ?? "0");
+                          if (n >= 2) return;
+                          const next = n === 0 ? a.srcHeif : a.srcPng;
+                          img.dataset.fallbackStep = String(n + 1);
+                          img.src = next;
+                        }}
+                        draggable={false}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                {AVATAR_OPTIONS.filter((a) => a.gender === "m").map((a) => {
+                  const selected = avatarKey === a.key;
+                  return (
+                    <button
+                      key={a.key}
+                      type="button"
+                      onClick={() => setAvatarKey(a.key)}
+                      className={`min-h-12 rounded-2xl border px-0 text-sm font-extrabold shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)] transition-transform hover:scale-[1.02] active:scale-[0.98] ${
+                        selected
+                          ? "border-[#f59e0b]/60 bg-[#0a0f1e]"
+                          : "border-gray-700/50 bg-[#0a0f1e]/60"
+                      }`}
+                      aria-label={`Avatar: ${a.label}`}
+                      title={a.label}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={a.srcWebp}
+                        alt=""
+                        className="mx-auto h-9 w-9 rounded-xl object-cover"
+                        onError={(e) => {
+                          const img = e.currentTarget;
+                          const n = Number(img.dataset.fallbackStep ?? "0");
+                          if (n >= 2) return;
+                          const next = n === 0 ? a.srcHeif : a.srcPng;
+                          img.dataset.fallbackStep = String(n + 1);
+                          img.src = next;
+                        }}
+                        draggable={false}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-gray-400">
+                Sus: feminine · jos: masculine
+              </p>
+            </div>
+          </div>
 
           {error != null && (
             <p

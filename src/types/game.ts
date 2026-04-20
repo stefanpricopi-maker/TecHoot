@@ -59,6 +59,7 @@ export interface Player {
   id: string;
   session_id: string;
   display_name: string;
+  avatar_key?: string | null;
   score: number;
   team_id?: string | null;
   joined_at: string;

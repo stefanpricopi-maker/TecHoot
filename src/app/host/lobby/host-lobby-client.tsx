@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { UserCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 
 import { startGame } from "@/app/actions/game-actions";
+import { PlayerAvatar } from "@/components/player-avatar";
 import {
   isLobbyPresenceFresh,
   LOBBY_PRESENCE_TICK_MS,
@@ -53,7 +53,9 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
     void (async () => {
       const { data, error: fetchError } = await supabase
         .from("players")
-        .select("id, session_id, display_name, score, joined_at, last_seen_at")
+        .select(
+          "id, session_id, display_name, avatar_key, score, joined_at, last_seen_at",
+        )
         .eq("session_id", sessionId)
         .order("display_name", { ascending: true });
 
@@ -285,14 +287,14 @@ export function HostLobbyClient(props: { pin: string; sessionId: string }) {
                       className="flex min-h-14 items-center justify-between gap-4 rounded-2xl border border-gray-700/50 bg-[#0a0f1e] px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]"
                     >
                       <span className="flex min-w-0 items-center gap-3">
-                        <UserCircle
-                          className={`size-10 shrink-0 ${
+                        <PlayerAvatar
+                          avatarKey={(p as any).avatar_key}
+                          className={
                             activePlayerId === p.id
-                              ? "text-gray-100"
-                              : "text-[#f59e0b]/80"
-                          }`}
-                          strokeWidth={1.25}
-                          aria-hidden
+                              ? "border-gray-300/40"
+                              : "border-[#f59e0b]/25"
+                          }
+                          size="lg"
                         />
                         <span className="truncate font-semibold text-gray-100">
                           {p.display_name}

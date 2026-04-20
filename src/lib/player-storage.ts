@@ -10,5 +10,6 @@ export const ADMIN_SESSION_KEY_COOKIE = "kahoot-live-admin-key";
 export const LS_PLAYER_ID_KEY = "kahoot-live:playerId";
 export const LS_NICKNAME_KEY = "kahoot-live:nickname";
 export const LS_PIN_KEY = "kahoot-live:pin";
+export const LS_AVATAR_KEY = "kahoot-live:avatar";
 
 export const PLAYER_COOKIE_MAX_AGE = 60 * 60 * 24; // 24 ore

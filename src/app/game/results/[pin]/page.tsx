@@ -112,7 +112,7 @@ export default async function GameResultsPage({ params }: PageProps) {
 
   const { data: rows, error: playersErr } = await supabase
     .from("players")
-    .select("id, session_id, display_name, score, joined_at")
+    .select("id, session_id, display_name, avatar_key, score, joined_at")
     .eq("session_id", sessionId)
     .order("score", { ascending: false });
 

@@ -81,6 +81,13 @@ export type QuestionAccuracySummaryAdminResult =
       ok: true;
       easiest: QuestionAccuracyRow[];
       hardest: QuestionAccuracyRow[];
+      fastestFinger: {
+        playerId: string;
+        displayName: string;
+        avatarKey: string | null;
+        avgResponseTimeMs: number;
+        answersCount: number;
+      } | null;
     }
   | { ok: false; error: string };
 
@@ -1545,6 +1552,7 @@ const NICKNAME_MAX = 32;
 export async function joinSession(
   pinRaw: string,
   nicknameRaw: string,
+  avatarKeyRaw?: string | null,
 ): Promise<JoinSessionResult> {
   const pin = normalizeJoinPin(pinRaw);
   if (!pin) {
@@ -1585,11 +1593,17 @@ export async function joinSession(
 
   const sessionId = session.id as string;
 
+  const avatarKey =
+    typeof avatarKeyRaw === "string" && avatarKeyRaw.trim()
+      ? avatarKeyRaw.trim().slice(0, 32)
+      : "bible";
+
   const { data: player, error: playerError } = await supabase
     .from("players")
     .insert({
       session_id: sessionId,
       display_name: nickname,
+      avatar_key: avatarKey,
     })
     .select("id")
     .single();
@@ -2549,7 +2563,9 @@ export async function getQuestionAccuracySummaryAdmin(
 
     const { data: rows, error: rErr } = await supabase
       .from("round_responses")
-      .select("question_index, selected_option_index, selected_option_indices")
+      .select(
+        "question_index, selected_option_index, selected_option_indices, player_id, response_time_ms",
+      )
       .eq("session_id", sessionId);
     if (rErr) return { ok: false, error: rErr.message };
 
@@ -2591,6 +2607,63 @@ export async function getQuestionAccuracySummaryAdmin(
       byQ.set(qIdx, cur);
     }
 
+    // "Cel mai rapid deget" (min avg response time).
+    const responseAgg = new Map<string, { sum: number; n: number }>();
+    for (const r of (rows ?? []) as any[]) {
+      const pid = typeof r.player_id === "string" ? r.player_id : null;
+      const ms = Number(r.response_time_ms ?? NaN);
+      if (!pid) continue;
+      if (!Number.isFinite(ms) || ms < 0) continue;
+      const cur = responseAgg.get(pid) ?? { sum: 0, n: 0 };
+      cur.sum += ms;
+      cur.n += 1;
+      responseAgg.set(pid, cur);
+    }
+
+    let fastest: {
+      playerId: string;
+      avgResponseTimeMs: number;
+      answersCount: number;
+    } | null = null;
+
+    for (const [playerId, { sum, n }] of responseAgg.entries()) {
+      if (n <= 0) continue;
+      const avg = sum / n;
+      if (!Number.isFinite(avg)) continue;
+      if (!fastest || avg < fastest.avgResponseTimeMs) {
+        fastest = {
+          playerId,
+          avgResponseTimeMs: Math.round(avg),
+          answersCount: n,
+        };
+      }
+    }
+
+    let fastestFinger: {
+      playerId: string;
+      displayName: string;
+      avatarKey: string | null;
+      avgResponseTimeMs: number;
+      answersCount: number;
+    } | null = null;
+
+    if (fastest) {
+      const { data: pl } = await supabase
+        .from("players")
+        .select("id, display_name, avatar_key")
+        .eq("id", fastest.playerId)
+        .maybeSingle();
+      if (pl?.id) {
+        fastestFinger = {
+          playerId: String(pl.id),
+          displayName: String((pl as any).display_name ?? ""),
+          avatarKey: ((pl as any).avatar_key as string | null | undefined) ?? null,
+          avgResponseTimeMs: fastest.avgResponseTimeMs,
+          answersCount: fastest.answersCount,
+        };
+      }
+    }
+
     const list: QuestionAccuracyRow[] = [];
     for (let qIdx = 0; qIdx < questions.length; qIdx++) {
       const q = questions[qIdx]!;
@@ -2626,7 +2699,7 @@ export async function getQuestionAccuracySummaryAdmin(
       })
       .slice(0, 3);
 
-    return { ok: true, easiest, hardest };
+    return { ok: true, easiest, hardest, fastestFinger };
   } catch (e) {
     const msg = e instanceof Error && e.message ? e.message : "Eroare statistici.";
     return { ok: false, error: msg };
@@ -2780,6 +2853,8 @@ export async function submitAnswer(
   const roundStarted = session.current_question_started_at
     ? new Date(session.current_question_started_at as string)
     : null;
+  const responseTimeMs =
+    roundStarted != null ? Math.max(0, answeredAt.getTime() - roundStarted.getTime()) : null;
 
   if (roundStarted) {
     const deadline = roundStarted.getTime() + questionDef.timeLimit * 1000;
@@ -2861,6 +2936,8 @@ export async function submitAnswer(
       selected_option_index: legacySelectedIndex,
       selected_option_indices: selected,
       points_earned: points,
+      answered_at: answeredAt.toISOString(),
+      response_time_ms: responseTimeMs,
     });
 
     if (insErr) {
@@ -2923,6 +3000,7 @@ export async function submitAnswer(
       selected_option_indices: selected,
       points_earned: points,
       answered_at: answeredAt.toISOString(),
+      response_time_ms: responseTimeMs,
     })
     .eq("id", existingId);
 
